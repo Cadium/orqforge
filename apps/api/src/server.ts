@@ -4,7 +4,10 @@ import { resolve } from "node:path";
 import type { DeploymentRepository } from "./domain/deployment-repository.js";
 import type { DeploymentLogRepository } from "./domain/deployment-log-repository.js";
 import type { ImageBuilder } from "./domain/image-builder.js";
+import type { ContainerRuntime } from "./domain/container-runtime.js";
 import type { LogPublisher } from "./domain/log-publisher.js";
+import type { IngressManager } from "./domain/ingress-manager.js";
+import type { RouteVerifier } from "./domain/route-verifier.js";
 import type { SourceMaterializer } from "./domain/source-materializer.js";
 import { DeploymentExecutor } from "./application/deployment-executor.js";
 import { DeploymentLogService } from "./application/deployment-log-service.js";
@@ -13,11 +16,14 @@ import { registerDeploymentRoutes } from "./interfaces/http/deployment-routes.js
 import { registerHealthRoutes } from "./interfaces/http/health-routes.js";
 import { registerLogRoutes } from "./interfaces/http/log-routes.js";
 import { RailpackImageBuilder } from "./infrastructure/build/railpack-image-builder.js";
+import { CaddyIngressManager } from "./infrastructure/ingress/caddy-ingress-manager.js";
 import { InMemoryLogPublisher } from "./infrastructure/logging/in-memory-log-publisher.js";
+import { DockerContainerRuntime } from "./infrastructure/runtime/docker-container-runtime.js";
 import { DefaultSourceMaterializer } from "./infrastructure/source/default-source-materializer.js";
 import { createDatabase } from "./infrastructure/sqlite/database.js";
 import { SqliteDeploymentLogRepository } from "./infrastructure/sqlite/sqlite-deployment-log-repository.js";
 import { SqliteDeploymentRepository } from "./infrastructure/sqlite/sqlite-deployment-repository.js";
+import { HttpRouteVerifier } from "./infrastructure/verification/http-route-verifier.js";
 
 interface BuildServerOptions {
   deploymentRepository?: DeploymentRepository;
@@ -26,6 +32,9 @@ interface BuildServerOptions {
   deploymentExecutor?: DeploymentExecutor | null;
   sourceMaterializer?: SourceMaterializer;
   imageBuilder?: ImageBuilder;
+  containerRuntime?: ContainerRuntime;
+  ingressManager?: IngressManager;
+  routeVerifier?: RouteVerifier;
 }
 
 export function buildServer(options: BuildServerOptions = {}) {
@@ -59,6 +68,17 @@ export function buildServer(options: BuildServerOptions = {}) {
       workspaceRoot: process.env.WORKSPACES_ROOT ?? ".data/workspaces",
     });
   const imageBuilder = options.imageBuilder ?? new RailpackImageBuilder();
+  const containerRuntime = options.containerRuntime ?? new DockerContainerRuntime();
+  const ingressManager =
+    options.ingressManager ??
+    new CaddyIngressManager({
+      routesDirectory: process.env.CADDY_ROUTES_DIR ?? "infra/caddy/routes",
+    });
+  const routeVerifier =
+    options.routeVerifier ??
+    new HttpRouteVerifier({
+      baseUrl: process.env.ORQFORGE_ROUTE_BASE_URL ?? "http://caddy",
+    });
   const deploymentExecutor =
     options.deploymentExecutor === null
       ? undefined
@@ -69,6 +89,9 @@ export function buildServer(options: BuildServerOptions = {}) {
           logPublisher,
           sourceMaterializer,
           imageBuilder,
+          containerRuntime,
+          ingressManager,
+          routeVerifier,
         ));
 
   server.get("/api", async () => ({

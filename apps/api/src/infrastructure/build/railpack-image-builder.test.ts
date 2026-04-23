@@ -46,6 +46,7 @@ describe("railpack image builder", () => {
         stage: "building_image",
         imageTag: null,
         routePath: null,
+        runtimeContainerName: null,
         failureReason: null,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -89,6 +90,7 @@ describe("railpack image builder", () => {
           stage: "building_image",
           imageTag: null,
           routePath: null,
+          runtimeContainerName: null,
           failureReason: null,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
@@ -108,4 +110,3 @@ function createTempDirectory() {
   temporaryDirectories.push(directory);
   return directory;
 }
-

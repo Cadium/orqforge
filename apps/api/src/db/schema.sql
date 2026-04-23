@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS deployments (
   stage TEXT NOT NULL,
   image_tag TEXT,
   route_path TEXT,
+  runtime_container_name TEXT,
   failure_reason TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL

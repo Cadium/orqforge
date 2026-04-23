@@ -1,9 +1,12 @@
 import { deriveStatusFromStage, transitionStage } from "./deployment-state-machine.js";
 import { DeploymentLogService } from "./deployment-log-service.js";
 import type { Deployment } from "@orqforge/shared";
+import type { ContainerRuntime } from "../domain/container-runtime.js";
 import type { ImageBuilder } from "../domain/image-builder.js";
 import type { DeploymentRepository } from "../domain/deployment-repository.js";
+import type { IngressManager } from "../domain/ingress-manager.js";
 import type { LogPublisher } from "../domain/log-publisher.js";
+import type { RouteVerifier } from "../domain/route-verifier.js";
 import type { SourceMaterializer } from "../domain/source-materializer.js";
 
 export class DeploymentExecutor {
@@ -13,6 +16,9 @@ export class DeploymentExecutor {
     private readonly logPublisher: LogPublisher,
     private readonly sourceMaterializer: SourceMaterializer,
     private readonly imageBuilder: ImageBuilder,
+    private readonly containerRuntime: ContainerRuntime,
+    private readonly ingressManager: IngressManager,
+    private readonly routeVerifier: RouteVerifier,
   ) {}
 
   enqueue(deploymentId: string) {
@@ -29,17 +35,11 @@ export class DeploymentExecutor {
     try {
       const materializedSource = await this.materializeSource(deploymentId);
       await this.buildImage(deploymentId, materializedSource);
-      await this.advance(deploymentId, "starting_container", [
-        "Container startup is stubbed until Docker runtime integration lands.",
-      ]);
-      await this.advance(deploymentId, "configuring_ingress", [
-        "Caddy route provisioning will be connected in a subsequent phase.",
-      ]);
-      await this.advance(deploymentId, "verifying_route", [
-        "Route verification placeholder completed.",
-      ]);
+      await this.startContainer(deploymentId);
+      await this.configureIngress(deploymentId);
+      await this.verifyRoute(deploymentId);
       await this.advance(deploymentId, "completed", [
-        "Deployment executor completed source preparation and image build successfully.",
+        "Deployment executor completed source preparation, image build, runtime startup, and routing successfully.",
       ]);
     } catch (error) {
       const latestDeployment = this.deploymentRepository.findById(deploymentId);
@@ -70,6 +70,45 @@ export class DeploymentExecutor {
         createdAt: failedDeployment.updatedAt,
       });
     }
+  }
+
+  private async configureIngress(deploymentId: string) {
+    const deployment = this.deploymentRepository.findById(deploymentId);
+
+    if (!deployment) {
+      throw new Error(`Deployment ${deploymentId} disappeared before ingress provisioning`);
+    }
+
+    if (!deployment.runtimeContainerName) {
+      throw new Error("Cannot configure ingress without a running container");
+    }
+
+    const runtimeContainerName = deployment.runtimeContainerName;
+    const ingressDeployment = this.transitionDeployment(deployment, "configuring_ingress");
+    const provisionedRoute = await this.ingressManager.provision(ingressDeployment, {
+      containerName: runtimeContainerName,
+      upstreamHost: runtimeContainerName,
+      upstreamPort: 3000,
+    });
+
+    const updatedDeployment = {
+      ...ingressDeployment,
+      routePath: provisionedRoute.routePath,
+      updatedAt: new Date().toISOString(),
+    };
+
+    this.deploymentRepository.update(updatedDeployment);
+    this.logPublisher.publishStatus({
+      type: "status",
+      deployment: updatedDeployment,
+    });
+    this.logService.appendLog({
+      deploymentId,
+      stage: updatedDeployment.stage,
+      stream: "system",
+      message: `Provisioned Caddy route at ${updatedDeployment.routePath}`,
+      createdAt: updatedDeployment.updatedAt,
+    });
   }
 
   private async buildImage(
@@ -168,6 +207,71 @@ export class DeploymentExecutor {
     });
 
     return materializedSource;
+  }
+
+  private async startContainer(deploymentId: string) {
+    const deployment = this.deploymentRepository.findById(deploymentId);
+
+    if (!deployment) {
+      throw new Error(`Deployment ${deploymentId} disappeared before runtime start`);
+    }
+
+    const startingDeployment = this.transitionDeployment(deployment, "starting_container");
+    const startedContainer = await this.containerRuntime.start(
+      startingDeployment,
+      (event) => {
+        this.logService.appendLog({
+          deploymentId,
+          stage: startingDeployment.stage,
+          stream: event.stream,
+          message: event.message,
+          createdAt: new Date().toISOString(),
+        });
+      },
+    );
+
+    const updatedDeployment = {
+      ...startingDeployment,
+      runtimeContainerName: startedContainer.containerName,
+      updatedAt: new Date().toISOString(),
+    };
+
+    this.deploymentRepository.update(updatedDeployment);
+    this.logPublisher.publishStatus({
+      type: "status",
+      deployment: updatedDeployment,
+    });
+    this.logService.appendLog({
+      deploymentId,
+      stage: updatedDeployment.stage,
+      stream: "system",
+      message: `Started container ${startedContainer.containerName}`,
+      createdAt: updatedDeployment.updatedAt,
+    });
+  }
+
+  private async verifyRoute(deploymentId: string) {
+    const deployment = this.deploymentRepository.findById(deploymentId);
+
+    if (!deployment) {
+      throw new Error(`Deployment ${deploymentId} disappeared before route verification`);
+    }
+
+    if (!deployment.routePath) {
+      throw new Error("Cannot verify a route that has not been provisioned");
+    }
+
+    const routePath = deployment.routePath;
+    const verifyingDeployment = this.transitionDeployment(deployment, "verifying_route");
+    await this.routeVerifier.verify(routePath);
+
+    this.logService.appendLog({
+      deploymentId,
+      stage: verifyingDeployment.stage,
+      stream: "system",
+      message: `Verified live route ${routePath}`,
+      createdAt: new Date().toISOString(),
+    });
   }
 
   private async advance(

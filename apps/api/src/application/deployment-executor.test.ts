@@ -6,7 +6,10 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { DeploymentExecutor } from "./deployment-executor.js";
 import { DeploymentLogService } from "./deployment-log-service.js";
+import type { ContainerRuntime } from "../domain/container-runtime.js";
 import type { ImageBuilder } from "../domain/image-builder.js";
+import type { IngressManager } from "../domain/ingress-manager.js";
+import type { RouteVerifier } from "../domain/route-verifier.js";
 import type { SourceMaterializer } from "../domain/source-materializer.js";
 import { createDatabase } from "../infrastructure/sqlite/database.js";
 import { InMemoryLogPublisher } from "../infrastructure/logging/in-memory-log-publisher.js";
@@ -48,12 +51,35 @@ describe("deployment executor", () => {
         };
       },
     };
+    const containerRuntime: ContainerRuntime = {
+      async start(_deployment, onLog) {
+        onLog({ stream: "stdout", message: "container booted" });
+        return {
+          containerName: "orqforge-sample-dep-1-dep-1",
+          upstreamHost: "orqforge-sample-dep-1-dep-1",
+          upstreamPort: 3000,
+        };
+      },
+    };
+    const ingressManager: IngressManager = {
+      async provision() {
+        return {
+          routePath: "/apps/sample-dep-1",
+        };
+      },
+    };
+    const routeVerifier: RouteVerifier = {
+      async verify() {},
+    };
     const executor = new DeploymentExecutor(
       deploymentRepository,
       logService,
       logPublisher,
       sourceMaterializer,
       imageBuilder,
+      containerRuntime,
+      ingressManager,
+      routeVerifier,
     );
 
     deploymentRepository.create({
@@ -65,6 +91,7 @@ describe("deployment executor", () => {
       stage: "accepted",
       imageTag: null,
       routePath: null,
+      runtimeContainerName: null,
       failureReason: null,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -82,10 +109,14 @@ describe("deployment executor", () => {
 
     expect(deployment?.stage).toBe("completed");
     expect(deployment?.imageTag).toBe("orqforge/sample-dep-1:dep-1");
+    expect(deployment?.runtimeContainerName).toBe("orqforge-sample-dep-1-dep-1");
+    expect(deployment?.routePath).toBe("/apps/sample-dep-1");
     expect(logs.length).toBeGreaterThan(0);
     expect(logs.some((log) => log.message.includes("Prepared sample workspace"))).toBe(true);
     expect(logs.some((log) => log.message.includes("railpack build completed"))).toBe(true);
-    expect(logs.at(-1)?.message).toMatch(/image build successfully/i);
+    expect(logs.some((log) => log.message.includes("container booted"))).toBe(true);
+    expect(logs.some((log) => log.message.includes("Verified live route"))).toBe(true);
+    expect(logs.at(-1)?.message).toMatch(/routing successfully/i);
   });
 });
 

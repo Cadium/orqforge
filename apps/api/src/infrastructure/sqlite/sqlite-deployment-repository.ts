@@ -13,6 +13,7 @@ interface DeploymentRow {
   stage: DeploymentStage;
   image_tag: string | null;
   route_path: string | null;
+  runtime_container_name: string | null;
   failure_reason: string | null;
   created_at: string;
   updated_at: string;
@@ -34,10 +35,11 @@ export class SqliteDeploymentRepository implements DeploymentRepository {
             stage,
             image_tag,
             route_path,
+            runtime_container_name,
             failure_reason,
             created_at,
             updated_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
       )
       .run(
@@ -49,6 +51,7 @@ export class SqliteDeploymentRepository implements DeploymentRepository {
         deployment.stage,
         deployment.imageTag,
         deployment.routePath,
+        deployment.runtimeContainerName,
         deployment.failureReason,
         deployment.createdAt,
         deployment.updatedAt,
@@ -68,6 +71,7 @@ export class SqliteDeploymentRepository implements DeploymentRepository {
             stage,
             image_tag,
             route_path,
+            runtime_container_name,
             failure_reason,
             created_at,
             updated_at
@@ -93,6 +97,7 @@ export class SqliteDeploymentRepository implements DeploymentRepository {
             stage,
             image_tag,
             route_path,
+            runtime_container_name,
             failure_reason,
             created_at,
             updated_at
@@ -118,6 +123,7 @@ export class SqliteDeploymentRepository implements DeploymentRepository {
             stage = ?,
             image_tag = ?,
             route_path = ?,
+            runtime_container_name = ?,
             failure_reason = ?,
             updated_at = ?
           WHERE id = ?
@@ -131,6 +137,7 @@ export class SqliteDeploymentRepository implements DeploymentRepository {
         deployment.stage,
         deployment.imageTag,
         deployment.routePath,
+        deployment.runtimeContainerName,
         deployment.failureReason,
         deployment.updatedAt,
         deployment.id,
@@ -148,6 +155,7 @@ function mapDeploymentRow(row: DeploymentRow): Deployment {
     stage: row.stage,
     imageTag: row.image_tag,
     routePath: row.route_path,
+    runtimeContainerName: row.runtime_container_name,
     failureReason: row.failure_reason,
     createdAt: row.created_at,
     updatedAt: row.updated_at,

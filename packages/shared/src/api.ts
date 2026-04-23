@@ -15,6 +15,7 @@ export interface Deployment {
   stage: DeploymentStage;
   imageTag: string | null;
   routePath: string | null;
+  runtimeContainerName: string | null;
   failureReason: string | null;
   createdAt: string;
   updatedAt: string;

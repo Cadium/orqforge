@@ -29,6 +29,7 @@ export class DeploymentService {
       stage: "accepted",
       imageTag: null,
       routePath: null,
+      runtimeContainerName: null,
       failureReason: null,
       createdAt: now,
       updatedAt: now,

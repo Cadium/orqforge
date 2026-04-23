@@ -3,6 +3,8 @@
     reverse_proxy api:4000
   }
 
+  import /etc/caddy/routes/*.caddy
+
   handle {
     root * /srv/site
     file_server

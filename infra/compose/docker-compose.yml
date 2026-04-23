@@ -9,23 +9,35 @@ services:
     environment:
       HOST: 0.0.0.0
       PORT: 4000
+      ORQFORGE_DOCKER_NETWORK: orqforge
+      CADDY_ROUTES_DIR: /workspace/infra/caddy/routes
+      ORQFORGE_ROUTE_BASE_URL: http://caddy
     ports:
       - "4000:4000"
     volumes:
       - ../../:/workspace
       - orqforge-pnpm-store:/root/.local/share/pnpm/store
       - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - orqforge
 
   caddy:
     image: caddy:2.9-alpine
     depends_on:
       - api
+    command: ["caddy", "run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile", "--watch"]
     ports:
       - "8080:80"
     volumes:
       - ../caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - ../caddy/site:/srv/site:ro
+      - ../caddy/routes:/etc/caddy/routes
+    networks:
+      - orqforge
 
 volumes:
   orqforge-pnpm-store:
 
+networks:
+  orqforge:
+    name: orqforge
