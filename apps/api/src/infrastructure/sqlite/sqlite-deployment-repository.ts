@@ -75,7 +75,7 @@ export class SqliteDeploymentRepository implements DeploymentRepository {
           ORDER BY created_at DESC
         `,
       )
-      .all() as DeploymentRow[];
+      .all() as unknown as DeploymentRow[];
 
     return rows.map(mapDeploymentRow);
   }
@@ -104,6 +104,38 @@ export class SqliteDeploymentRepository implements DeploymentRepository {
 
     return row ? mapDeploymentRow(row) : null;
   }
+
+  update(deployment: Deployment) {
+    this.database
+      .prepare(
+        `
+          UPDATE deployments
+          SET
+            slug = ?,
+            source_kind = ?,
+            source_ref = ?,
+            status = ?,
+            stage = ?,
+            image_tag = ?,
+            route_path = ?,
+            failure_reason = ?,
+            updated_at = ?
+          WHERE id = ?
+        `,
+      )
+      .run(
+        deployment.slug,
+        deployment.sourceKind,
+        deployment.sourceRef,
+        deployment.status,
+        deployment.stage,
+        deployment.imageTag,
+        deployment.routePath,
+        deployment.failureReason,
+        deployment.updatedAt,
+        deployment.id,
+      );
+  }
 }
 
 function mapDeploymentRow(row: DeploymentRow): Deployment {
@@ -121,4 +153,3 @@ function mapDeploymentRow(row: DeploymentRow): Deployment {
     updatedAt: row.updated_at,
   };
 }
-

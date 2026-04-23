@@ -1,0 +1,81 @@
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import { afterEach, describe, expect, it } from "vitest";
+
+import { DeploymentExecutor } from "./deployment-executor.js";
+import { DeploymentLogService } from "./deployment-log-service.js";
+import { createDatabase } from "../infrastructure/sqlite/database.js";
+import { InMemoryLogPublisher } from "../infrastructure/logging/in-memory-log-publisher.js";
+import { SqliteDeploymentLogRepository } from "../infrastructure/sqlite/sqlite-deployment-log-repository.js";
+import { SqliteDeploymentRepository } from "../infrastructure/sqlite/sqlite-deployment-repository.js";
+
+const temporaryDirectories: string[] = [];
+
+afterEach(() => {
+  for (const directory of temporaryDirectories.splice(0)) {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+describe("deployment executor", () => {
+  it("advances a deployment through the skeleton stages and persists logs", async () => {
+    const temporaryDirectory = mkdtempSync(join(tmpdir(), "orqforge-api-test-"));
+    temporaryDirectories.push(temporaryDirectory);
+
+    const database = createDatabase(join(temporaryDirectory, "orqforge.sqlite"));
+    const deploymentRepository = new SqliteDeploymentRepository(database);
+    const logRepository = new SqliteDeploymentLogRepository(database);
+    const logPublisher = new InMemoryLogPublisher();
+    const logService = new DeploymentLogService(logRepository, logPublisher);
+    const executor = new DeploymentExecutor(
+      deploymentRepository,
+      logService,
+      logPublisher,
+    );
+
+    deploymentRepository.create({
+      id: "dep-1",
+      slug: "sample-dep-1",
+      sourceKind: "sample",
+      sourceRef: "hello-node",
+      status: "pending",
+      stage: "accepted",
+      imageTag: null,
+      routePath: null,
+      failureReason: null,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+
+    executor.enqueue("dep-1");
+
+    await waitFor(async () => {
+      const deployment = deploymentRepository.findById("dep-1");
+      return deployment?.status === "running";
+    });
+
+    const deployment = deploymentRepository.findById("dep-1");
+    const logs = logRepository.listByDeploymentId("dep-1");
+
+    expect(deployment?.stage).toBe("completed");
+    expect(logs.length).toBeGreaterThan(0);
+    expect(logs.at(-1)?.message).toMatch(/completed successfully/i);
+  });
+});
+
+async function waitFor(condition: () => boolean | Promise<boolean>, timeoutMs = 1000) {
+  const start = Date.now();
+
+  while (Date.now() - start < timeoutMs) {
+    if (await condition()) {
+      return;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+
+  throw new Error("Timed out waiting for condition");
+}
+

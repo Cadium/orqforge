@@ -1,4 +1,5 @@
 import type { DeploymentSourceKind } from "./deployments.js";
+import type { DeploymentStage, DeploymentStatus } from "./deployments.js";
 
 export interface CreateDeploymentInput {
   sourceKind: DeploymentSourceKind;
@@ -10,8 +11,8 @@ export interface Deployment {
   slug: string;
   sourceKind: DeploymentSourceKind;
   sourceRef: string;
-  status: import("./deployments.js").DeploymentStatus;
-  stage: import("./deployments.js").DeploymentStage;
+  status: DeploymentStatus;
+  stage: DeploymentStage;
   imageTag: string | null;
   routePath: string | null;
   failureReason: string | null;
@@ -19,3 +20,21 @@ export interface Deployment {
   updatedAt: string;
 }
 
+export interface DeploymentLogEntry {
+  deploymentId: string;
+  seq: number;
+  stage: DeploymentStage;
+  stream: "stdout" | "stderr" | "system";
+  message: string;
+  createdAt: string;
+}
+
+export interface DeploymentLogEvent {
+  type: "log";
+  log: DeploymentLogEntry;
+}
+
+export interface DeploymentStatusEvent {
+  type: "status";
+  deployment: Deployment;
+}

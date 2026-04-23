@@ -5,19 +5,24 @@ import {
   type CreateDeploymentInput,
 } from "@orqforge/shared";
 
+import type { DeploymentExecutor } from "../../application/deployment-executor.js";
 import { DeploymentService } from "../../application/deployment-service.js";
 import type { DeploymentRepository } from "../../domain/deployment-repository.js";
 import { ValidationError } from "../../domain/errors.js";
 
 interface DeploymentRouteDependencies {
   deploymentRepository: DeploymentRepository;
+  deploymentExecutor?: DeploymentExecutor;
 }
 
 export function registerDeploymentRoutes(
   server: FastifyInstance,
   dependencies: DeploymentRouteDependencies,
 ) {
-  const deploymentService = new DeploymentService(dependencies.deploymentRepository);
+  const deploymentService = new DeploymentService(
+    dependencies.deploymentRepository,
+    dependencies.deploymentExecutor,
+  );
 
   server.get("/api/deployments", async () => ({
     deployments: deploymentService.listDeployments(),
@@ -54,14 +59,14 @@ function parseCreateDeploymentInput(body: unknown): CreateDeploymentInput {
   const sourceKind = getStringField(body, "sourceKind");
   const sourceRef = getStringField(body, "sourceRef");
 
-  if (!DEPLOYMENT_SOURCE_KINDS.includes(sourceKind)) {
+  if (!DEPLOYMENT_SOURCE_KINDS.includes(sourceKind as CreateDeploymentInput["sourceKind"])) {
     throw new ValidationError(
       `sourceKind must be one of: ${DEPLOYMENT_SOURCE_KINDS.join(", ")}`,
     );
   }
 
   return {
-    sourceKind,
+    sourceKind: sourceKind as CreateDeploymentInput["sourceKind"],
     sourceRef,
   };
 }

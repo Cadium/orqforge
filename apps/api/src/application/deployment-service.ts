@@ -7,9 +7,13 @@ import {
 } from "@orqforge/shared";
 
 import type { DeploymentRepository } from "../domain/deployment-repository.js";
+import type { DeploymentExecutor } from "./deployment-executor.js";
 
 export class DeploymentService {
-  constructor(private readonly deploymentRepository: DeploymentRepository) {}
+  constructor(
+    private readonly deploymentRepository: DeploymentRepository,
+    private readonly deploymentExecutor?: DeploymentExecutor,
+  ) {}
 
   createDeployment(input: CreateDeploymentInput): Deployment {
     const now = new Date().toISOString();
@@ -31,6 +35,7 @@ export class DeploymentService {
     };
 
     this.deploymentRepository.create(deployment);
+    this.deploymentExecutor?.enqueue(deployment.id);
 
     return deployment;
   }
@@ -47,4 +52,3 @@ export class DeploymentService {
 function buildDeploymentSlug(sourceKind: DeploymentSourceKind, id: string) {
   return `${sourceKind}-${id.slice(0, 8)}`;
 }
-

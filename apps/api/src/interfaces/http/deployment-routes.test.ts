@@ -5,6 +5,8 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { createDatabase } from "../../infrastructure/sqlite/database.js";
+import { InMemoryLogPublisher } from "../../infrastructure/logging/in-memory-log-publisher.js";
+import { SqliteDeploymentLogRepository } from "../../infrastructure/sqlite/sqlite-deployment-log-repository.js";
 import { SqliteDeploymentRepository } from "../../infrastructure/sqlite/sqlite-deployment-repository.js";
 import { buildServer } from "../../server.js";
 
@@ -86,9 +88,13 @@ function createTestServer() {
 
   const database = createDatabase(join(temporaryDirectory, "orqforge.sqlite"));
   const deploymentRepository = new SqliteDeploymentRepository(database);
+  const logRepository = new SqliteDeploymentLogRepository(database);
+  const logPublisher = new InMemoryLogPublisher();
 
   return buildServer({
     deploymentRepository,
+    logRepository,
+    logPublisher,
+    deploymentExecutor: null,
   });
 }
-
