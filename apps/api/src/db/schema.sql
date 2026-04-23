@@ -4,6 +4,7 @@ CREATE TABLE IF NOT EXISTS deployments (
   id TEXT PRIMARY KEY,
   slug TEXT NOT NULL UNIQUE,
   source_kind TEXT NOT NULL,
+  source_ref TEXT NOT NULL,
   status TEXT NOT NULL,
   stage TEXT NOT NULL,
   image_tag TEXT,
