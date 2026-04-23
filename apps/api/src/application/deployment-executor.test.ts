@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { DeploymentExecutor } from "./deployment-executor.js";
 import { DeploymentLogService } from "./deployment-log-service.js";
+import type { SourceMaterializer } from "../domain/source-materializer.js";
 import { createDatabase } from "../infrastructure/sqlite/database.js";
 import { InMemoryLogPublisher } from "../infrastructure/logging/in-memory-log-publisher.js";
 import { SqliteDeploymentLogRepository } from "../infrastructure/sqlite/sqlite-deployment-log-repository.js";
@@ -29,10 +30,19 @@ describe("deployment executor", () => {
     const logRepository = new SqliteDeploymentLogRepository(database);
     const logPublisher = new InMemoryLogPublisher();
     const logService = new DeploymentLogService(logRepository, logPublisher);
+    const sourceMaterializer: SourceMaterializer = {
+      async materialize() {
+        return {
+          workspacePath: join(temporaryDirectory, "workspaces", "dep-1"),
+          description: "Prepared sample workspace",
+        };
+      },
+    };
     const executor = new DeploymentExecutor(
       deploymentRepository,
       logService,
       logPublisher,
+      sourceMaterializer,
     );
 
     deploymentRepository.create({
@@ -61,7 +71,8 @@ describe("deployment executor", () => {
 
     expect(deployment?.stage).toBe("completed");
     expect(logs.length).toBeGreaterThan(0);
-    expect(logs.at(-1)?.message).toMatch(/completed successfully/i);
+    expect(logs.some((log) => log.message.includes("Prepared sample workspace"))).toBe(true);
+    expect(logs.at(-1)?.message).toMatch(/source preparation successfully/i);
   });
 });
 
@@ -78,4 +89,3 @@ async function waitFor(condition: () => boolean | Promise<boolean>, timeoutMs = 
 
   throw new Error("Timed out waiting for condition");
 }
-

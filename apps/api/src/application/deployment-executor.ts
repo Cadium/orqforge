@@ -1,13 +1,16 @@
 import { deriveStatusFromStage, transitionStage } from "./deployment-state-machine.js";
 import { DeploymentLogService } from "./deployment-log-service.js";
+import type { Deployment } from "@orqforge/shared";
 import type { DeploymentRepository } from "../domain/deployment-repository.js";
 import type { LogPublisher } from "../domain/log-publisher.js";
+import type { SourceMaterializer } from "../domain/source-materializer.js";
 
 export class DeploymentExecutor {
   constructor(
     private readonly deploymentRepository: DeploymentRepository,
     private readonly logService: DeploymentLogService,
     private readonly logPublisher: LogPublisher,
+    private readonly sourceMaterializer: SourceMaterializer,
   ) {}
 
   enqueue(deploymentId: string) {
@@ -22,12 +25,10 @@ export class DeploymentExecutor {
     }
 
     try {
-      await this.advance(deploymentId, "materializing_source", [
-        `Preparing ${deployment.sourceKind} source input`,
-        `Source reference: ${deployment.sourceRef}`,
-      ]);
+      const materializedSource = await this.materializeSource(deploymentId);
       await this.advance(deploymentId, "building_image", [
-        "Build execution is not wired yet; this is the pipeline skeleton stage.",
+        `Workspace prepared at ${materializedSource.workspacePath}`,
+        "Railpack build execution is not wired yet; this is the next Orqforge phase.",
       ]);
       await this.advance(deploymentId, "starting_container", [
         "Container startup is stubbed until Docker runtime integration lands.",
@@ -39,7 +40,7 @@ export class DeploymentExecutor {
         "Route verification placeholder completed.",
       ]);
       await this.advance(deploymentId, "completed", [
-        "Deployment executor skeleton completed successfully.",
+        "Deployment executor completed source preparation successfully.",
       ]);
     } catch (error) {
       const latestDeployment = this.deploymentRepository.findById(deploymentId);
@@ -72,6 +73,43 @@ export class DeploymentExecutor {
     }
   }
 
+  private async materializeSource(deploymentId: string) {
+    const deployment = this.deploymentRepository.findById(deploymentId);
+
+    if (!deployment) {
+      throw new Error(`Deployment ${deploymentId} disappeared before materialization`);
+    }
+
+    const updatedDeployment = this.transitionDeployment(deployment, "materializing_source");
+
+    this.logService.appendLog({
+      deploymentId,
+      stage: updatedDeployment.stage,
+      stream: "system",
+      message: `Preparing ${updatedDeployment.sourceKind} source input`,
+      createdAt: new Date().toISOString(),
+    });
+    this.logService.appendLog({
+      deploymentId,
+      stage: updatedDeployment.stage,
+      stream: "system",
+      message: `Source reference: ${updatedDeployment.sourceRef}`,
+      createdAt: new Date().toISOString(),
+    });
+
+    const materializedSource = await this.sourceMaterializer.materialize(updatedDeployment);
+
+    this.logService.appendLog({
+      deploymentId,
+      stage: updatedDeployment.stage,
+      stream: "system",
+      message: materializedSource.description,
+      createdAt: new Date().toISOString(),
+    });
+
+    return materializedSource;
+  }
+
   private async advance(
     deploymentId: string,
     nextStage:
@@ -89,6 +127,31 @@ export class DeploymentExecutor {
       throw new Error(`Deployment ${deploymentId} disappeared during execution`);
     }
 
+    const updatedDeployment = this.transitionDeployment(deployment, nextStage);
+
+    for (const message of messages) {
+      this.logService.appendLog({
+        deploymentId,
+        stage: updatedDeployment.stage,
+        stream: "system",
+        message,
+        createdAt: new Date().toISOString(),
+      });
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+
+  private transitionDeployment(
+    deployment: Deployment,
+    nextStage:
+      | "materializing_source"
+      | "building_image"
+      | "starting_container"
+      | "configuring_ingress"
+      | "verifying_route"
+      | "completed",
+  ) {
     const updatedAt = new Date().toISOString();
     const updatedDeployment = {
       ...deployment,
@@ -103,17 +166,6 @@ export class DeploymentExecutor {
       deployment: updatedDeployment,
     });
 
-    for (const message of messages) {
-      this.logService.appendLog({
-        deploymentId,
-        stage: updatedDeployment.stage,
-        stream: "system",
-        message,
-        createdAt: new Date().toISOString(),
-      });
-    }
-
-    await new Promise((resolve) => setTimeout(resolve, 5));
+    return updatedDeployment;
   }
 }
-

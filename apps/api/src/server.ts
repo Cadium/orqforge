@@ -1,8 +1,10 @@
 import Fastify from "fastify";
+import { resolve } from "node:path";
 
 import type { DeploymentRepository } from "./domain/deployment-repository.js";
 import type { DeploymentLogRepository } from "./domain/deployment-log-repository.js";
 import type { LogPublisher } from "./domain/log-publisher.js";
+import type { SourceMaterializer } from "./domain/source-materializer.js";
 import { DeploymentExecutor } from "./application/deployment-executor.js";
 import { DeploymentLogService } from "./application/deployment-log-service.js";
 import { ValidationError } from "./domain/errors.js";
@@ -10,6 +12,7 @@ import { registerDeploymentRoutes } from "./interfaces/http/deployment-routes.js
 import { registerHealthRoutes } from "./interfaces/http/health-routes.js";
 import { registerLogRoutes } from "./interfaces/http/log-routes.js";
 import { InMemoryLogPublisher } from "./infrastructure/logging/in-memory-log-publisher.js";
+import { DefaultSourceMaterializer } from "./infrastructure/source/default-source-materializer.js";
 import { createDatabase } from "./infrastructure/sqlite/database.js";
 import { SqliteDeploymentLogRepository } from "./infrastructure/sqlite/sqlite-deployment-log-repository.js";
 import { SqliteDeploymentRepository } from "./infrastructure/sqlite/sqlite-deployment-repository.js";
@@ -19,6 +22,7 @@ interface BuildServerOptions {
   logRepository?: DeploymentLogRepository;
   logPublisher?: LogPublisher;
   deploymentExecutor?: DeploymentExecutor | null;
+  sourceMaterializer?: SourceMaterializer;
 }
 
 export function buildServer(options: BuildServerOptions = {}) {
@@ -45,11 +49,22 @@ export function buildServer(options: BuildServerOptions = {}) {
     options.logRepository ?? new SqliteDeploymentLogRepository(getDatabase(database));
   const logPublisher = options.logPublisher ?? new InMemoryLogPublisher();
   const logService = new DeploymentLogService(logRepository, logPublisher);
+  const sourceMaterializer =
+    options.sourceMaterializer ??
+    new DefaultSourceMaterializer({
+      sampleAppsRoot: resolve(process.cwd(), "sample-apps"),
+      workspaceRoot: process.env.WORKSPACES_ROOT ?? ".data/workspaces",
+    });
   const deploymentExecutor =
     options.deploymentExecutor === null
       ? undefined
       : (options.deploymentExecutor ??
-        new DeploymentExecutor(deploymentRepository, logService, logPublisher));
+        new DeploymentExecutor(
+          deploymentRepository,
+          logService,
+          logPublisher,
+          sourceMaterializer,
+        ));
 
   server.get("/api", async () => ({
     name: "orqforge-api",
