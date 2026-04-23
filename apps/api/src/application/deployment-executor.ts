@@ -1,6 +1,7 @@
 import { deriveStatusFromStage, transitionStage } from "./deployment-state-machine.js";
 import { DeploymentLogService } from "./deployment-log-service.js";
 import type { Deployment } from "@orqforge/shared";
+import type { ImageBuilder } from "../domain/image-builder.js";
 import type { DeploymentRepository } from "../domain/deployment-repository.js";
 import type { LogPublisher } from "../domain/log-publisher.js";
 import type { SourceMaterializer } from "../domain/source-materializer.js";
@@ -11,6 +12,7 @@ export class DeploymentExecutor {
     private readonly logService: DeploymentLogService,
     private readonly logPublisher: LogPublisher,
     private readonly sourceMaterializer: SourceMaterializer,
+    private readonly imageBuilder: ImageBuilder,
   ) {}
 
   enqueue(deploymentId: string) {
@@ -26,10 +28,7 @@ export class DeploymentExecutor {
 
     try {
       const materializedSource = await this.materializeSource(deploymentId);
-      await this.advance(deploymentId, "building_image", [
-        `Workspace prepared at ${materializedSource.workspacePath}`,
-        "Railpack build execution is not wired yet; this is the next Orqforge phase.",
-      ]);
+      await this.buildImage(deploymentId, materializedSource);
       await this.advance(deploymentId, "starting_container", [
         "Container startup is stubbed until Docker runtime integration lands.",
       ]);
@@ -40,7 +39,7 @@ export class DeploymentExecutor {
         "Route verification placeholder completed.",
       ]);
       await this.advance(deploymentId, "completed", [
-        "Deployment executor completed source preparation successfully.",
+        "Deployment executor completed source preparation and image build successfully.",
       ]);
     } catch (error) {
       const latestDeployment = this.deploymentRepository.findById(deploymentId);
@@ -71,6 +70,67 @@ export class DeploymentExecutor {
         createdAt: failedDeployment.updatedAt,
       });
     }
+  }
+
+  private async buildImage(
+    deploymentId: string,
+    materializedSource: Awaited<ReturnType<SourceMaterializer["materialize"]>>,
+  ) {
+    const deployment = this.deploymentRepository.findById(deploymentId);
+
+    if (!deployment) {
+      throw new Error(`Deployment ${deploymentId} disappeared before image build`);
+    }
+
+    const buildingDeployment = this.transitionDeployment(deployment, "building_image");
+
+    this.logService.appendLog({
+      deploymentId,
+      stage: buildingDeployment.stage,
+      stream: "system",
+      message: `Workspace prepared at ${materializedSource.workspacePath}`,
+      createdAt: new Date().toISOString(),
+    });
+    this.logService.appendLog({
+      deploymentId,
+      stage: buildingDeployment.stage,
+      stream: "system",
+      message: "Starting Railpack image build",
+      createdAt: new Date().toISOString(),
+    });
+
+    const buildResult = await this.imageBuilder.build(
+      buildingDeployment,
+      materializedSource,
+      (event) => {
+        this.logService.appendLog({
+          deploymentId,
+          stage: buildingDeployment.stage,
+          stream: event.stream,
+          message: event.message,
+          createdAt: new Date().toISOString(),
+        });
+      },
+    );
+
+    const updatedDeployment = {
+      ...buildingDeployment,
+      imageTag: buildResult.imageTag,
+      updatedAt: new Date().toISOString(),
+    };
+
+    this.deploymentRepository.update(updatedDeployment);
+    this.logPublisher.publishStatus({
+      type: "status",
+      deployment: updatedDeployment,
+    });
+    this.logService.appendLog({
+      deploymentId,
+      stage: updatedDeployment.stage,
+      stream: "system",
+      message: `Built image tag ${buildResult.imageTag}`,
+      createdAt: updatedDeployment.updatedAt,
+    });
   }
 
   private async materializeSource(deploymentId: string) {

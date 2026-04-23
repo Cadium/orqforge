@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 
 import type { DeploymentRepository } from "./domain/deployment-repository.js";
 import type { DeploymentLogRepository } from "./domain/deployment-log-repository.js";
+import type { ImageBuilder } from "./domain/image-builder.js";
 import type { LogPublisher } from "./domain/log-publisher.js";
 import type { SourceMaterializer } from "./domain/source-materializer.js";
 import { DeploymentExecutor } from "./application/deployment-executor.js";
@@ -11,6 +12,7 @@ import { ValidationError } from "./domain/errors.js";
 import { registerDeploymentRoutes } from "./interfaces/http/deployment-routes.js";
 import { registerHealthRoutes } from "./interfaces/http/health-routes.js";
 import { registerLogRoutes } from "./interfaces/http/log-routes.js";
+import { RailpackImageBuilder } from "./infrastructure/build/railpack-image-builder.js";
 import { InMemoryLogPublisher } from "./infrastructure/logging/in-memory-log-publisher.js";
 import { DefaultSourceMaterializer } from "./infrastructure/source/default-source-materializer.js";
 import { createDatabase } from "./infrastructure/sqlite/database.js";
@@ -23,6 +25,7 @@ interface BuildServerOptions {
   logPublisher?: LogPublisher;
   deploymentExecutor?: DeploymentExecutor | null;
   sourceMaterializer?: SourceMaterializer;
+  imageBuilder?: ImageBuilder;
 }
 
 export function buildServer(options: BuildServerOptions = {}) {
@@ -55,6 +58,7 @@ export function buildServer(options: BuildServerOptions = {}) {
       sampleAppsRoot: resolve(process.cwd(), "sample-apps"),
       workspaceRoot: process.env.WORKSPACES_ROOT ?? ".data/workspaces",
     });
+  const imageBuilder = options.imageBuilder ?? new RailpackImageBuilder();
   const deploymentExecutor =
     options.deploymentExecutor === null
       ? undefined
@@ -64,6 +68,7 @@ export function buildServer(options: BuildServerOptions = {}) {
           logService,
           logPublisher,
           sourceMaterializer,
+          imageBuilder,
         ));
 
   server.get("/api", async () => ({

@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { DeploymentExecutor } from "./deployment-executor.js";
 import { DeploymentLogService } from "./deployment-log-service.js";
+import type { ImageBuilder } from "../domain/image-builder.js";
 import type { SourceMaterializer } from "../domain/source-materializer.js";
 import { createDatabase } from "../infrastructure/sqlite/database.js";
 import { InMemoryLogPublisher } from "../infrastructure/logging/in-memory-log-publisher.js";
@@ -38,11 +39,21 @@ describe("deployment executor", () => {
         };
       },
     };
+    const imageBuilder: ImageBuilder = {
+      async build(_deployment, _source, onLog) {
+        onLog({ stream: "stdout", message: "railpack build started" });
+        onLog({ stream: "stdout", message: "railpack build completed" });
+        return {
+          imageTag: "orqforge/sample-dep-1:dep-1",
+        };
+      },
+    };
     const executor = new DeploymentExecutor(
       deploymentRepository,
       logService,
       logPublisher,
       sourceMaterializer,
+      imageBuilder,
     );
 
     deploymentRepository.create({
@@ -70,9 +81,11 @@ describe("deployment executor", () => {
     const logs = logRepository.listByDeploymentId("dep-1");
 
     expect(deployment?.stage).toBe("completed");
+    expect(deployment?.imageTag).toBe("orqforge/sample-dep-1:dep-1");
     expect(logs.length).toBeGreaterThan(0);
     expect(logs.some((log) => log.message.includes("Prepared sample workspace"))).toBe(true);
-    expect(logs.at(-1)?.message).toMatch(/source preparation successfully/i);
+    expect(logs.some((log) => log.message.includes("railpack build completed"))).toBe(true);
+    expect(logs.at(-1)?.message).toMatch(/image build successfully/i);
   });
 });
 
