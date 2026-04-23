@@ -1,5 +1,6 @@
 import Fastify from "fastify";
 import { resolve } from "node:path";
+import multipart from "@fastify/multipart";
 
 import type { DeploymentRepository } from "./domain/deployment-repository.js";
 import type { DeploymentLogRepository } from "./domain/deployment-log-repository.js";
@@ -15,6 +16,7 @@ import { ValidationError } from "./domain/errors.js";
 import { registerDeploymentRoutes } from "./interfaces/http/deployment-routes.js";
 import { registerHealthRoutes } from "./interfaces/http/health-routes.js";
 import { registerLogRoutes } from "./interfaces/http/log-routes.js";
+import { registerUploadRoutes } from "./interfaces/http/upload-routes.js";
 import { RailpackImageBuilder } from "./infrastructure/build/railpack-image-builder.js";
 import { CaddyIngressManager } from "./infrastructure/ingress/caddy-ingress-manager.js";
 import { InMemoryLogPublisher } from "./infrastructure/logging/in-memory-log-publisher.js";
@@ -79,6 +81,13 @@ export function buildServer(options: BuildServerOptions = {}) {
     new HttpRouteVerifier({
       baseUrl: process.env.ORQFORGE_ROUTE_BASE_URL ?? "http://caddy",
     });
+
+  void server.register(multipart, {
+    limits: {
+      fileSize: 50 * 1024 * 1024,
+      files: 1,
+    },
+  });
   const deploymentExecutor =
     options.deploymentExecutor === null
       ? undefined
@@ -102,6 +111,9 @@ export function buildServer(options: BuildServerOptions = {}) {
   registerHealthRoutes(server);
   registerDeploymentRoutes(server, { deploymentRepository, deploymentExecutor });
   registerLogRoutes(server, { logRepository, logPublisher });
+  registerUploadRoutes(server, {
+    uploadsRoot: process.env.UPLOADS_ROOT ?? ".data/uploads",
+  });
 
   return server;
 }

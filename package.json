@@ -6,7 +6,8 @@
   "packageManager": "pnpm@10.7.0",
   "scripts": {
     "dev:api": "pnpm --filter @orqforge/api dev",
+    "dev:web": "pnpm --filter @orqforge/web dev",
     "test": "pnpm --filter @orqforge/api test",
-    "typecheck": "pnpm --filter @orqforge/api typecheck && pnpm --filter @orqforge/shared typecheck"
+    "typecheck": "pnpm --filter @orqforge/api typecheck && pnpm --filter @orqforge/shared typecheck && pnpm --filter @orqforge/web typecheck"
   }
 }

@@ -3,15 +3,21 @@ services:
     image: node:22-alpine
     working_dir: /workspace
     command: >
-      sh -c "corepack enable &&
+      sh -c "apk add --no-cache docker-cli git unzip tar curl &&
+      curl -sSL https://railpack.com/install.sh | sh -s -- --bin-dir /usr/local/bin &&
+      corepack enable &&
       pnpm install &&
       pnpm --filter @orqforge/api dev"
+    depends_on:
+      - buildkitd
     environment:
       HOST: 0.0.0.0
       PORT: 4000
       ORQFORGE_DOCKER_NETWORK: orqforge
       CADDY_ROUTES_DIR: /workspace/infra/caddy/routes
       ORQFORGE_ROUTE_BASE_URL: http://caddy
+      UPLOADS_ROOT: /workspace/.data/uploads
+      BUILDKIT_HOST: tcp://buildkitd:1234
     ports:
       - "4000:4000"
     volumes:
@@ -21,16 +27,38 @@ services:
     networks:
       - orqforge
 
+  web:
+    image: node:22-alpine
+    working_dir: /workspace
+    command: >
+      sh -c "corepack enable &&
+      pnpm install &&
+      pnpm --filter @orqforge/web dev --host 0.0.0.0 --port 3000"
+    ports:
+      - "3000:3000"
+    volumes:
+      - ../../:/workspace
+      - orqforge-pnpm-store:/root/.local/share/pnpm/store
+    networks:
+      - orqforge
+
+  buildkitd:
+    image: moby/buildkit:latest
+    command: ["--addr", "tcp://0.0.0.0:1234"]
+    privileged: true
+    networks:
+      - orqforge
+
   caddy:
     image: caddy:2.9-alpine
     depends_on:
       - api
+      - web
     command: ["caddy", "run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile", "--watch"]
     ports:
       - "8080:80"
     volumes:
       - ../caddy/Caddyfile:/etc/caddy/Caddyfile:ro
-      - ../caddy/site:/srv/site:ro
       - ../caddy/routes:/etc/caddy/routes
     networks:
       - orqforge
