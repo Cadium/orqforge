@@ -1,0 +1,11 @@
+{
+  "name": "orqforge",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Orqforge is a lightweight deployment orchestration prototype inspired by modern PaaS systems.",
+  "packageManager": "pnpm@10.7.0",
+  "scripts": {
+    "lint": "echo \"Linting will be added in subsequent commits\"",
+    "test": "echo \"Testing will be added in subsequent commits\""
+  }
+}

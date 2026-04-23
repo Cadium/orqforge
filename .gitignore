@@ -1,0 +1,17 @@
+node_modules
+.DS_Store
+dist
+coverage
+.turbo
+.vite
+*.log
+
+# Runtime state
+.data
+tmp
+
+# Environment overrides
+.env
+.env.local
+.env.*.local
+
