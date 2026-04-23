@@ -1,0 +1,31 @@
+services:
+  api:
+    image: node:22-alpine
+    working_dir: /workspace
+    command: >
+      sh -c "corepack enable &&
+      pnpm install &&
+      pnpm --filter @orqforge/api dev"
+    environment:
+      HOST: 0.0.0.0
+      PORT: 4000
+    ports:
+      - "4000:4000"
+    volumes:
+      - ../../:/workspace
+      - orqforge-pnpm-store:/root/.local/share/pnpm/store
+      - /var/run/docker.sock:/var/run/docker.sock
+
+  caddy:
+    image: caddy:2.9-alpine
+    depends_on:
+      - api
+    ports:
+      - "8080:80"
+    volumes:
+      - ../caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ../caddy/site:/srv/site:ro
+
+volumes:
+  orqforge-pnpm-store:
+
