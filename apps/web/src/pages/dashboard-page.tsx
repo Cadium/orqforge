@@ -77,7 +77,16 @@ export function DashboardPage() {
   return (
     <div className="app-shell">
       <header className="topbar">
-        <span className="topbar-wordmark">Orqforge</span>
+        <div className="topbar-brand">
+          <span className="topbar-icon">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <polygon points="12 2 2 7 12 12 22 7 12 2"/>
+              <polyline points="2 17 12 22 22 17"/>
+              <polyline points="2 12 12 17 22 12"/>
+            </svg>
+          </span>
+          <span className="topbar-wordmark">Orqforge</span>
+        </div>
         <span
           className={`topbar-api-dot${isApiHealthy ? "" : " unhealthy"}`}
           title={isApiHealthy ? "API online" : "API unreachable"}
@@ -88,7 +97,7 @@ export function DashboardPage() {
           <span>{deployments.length === 1 ? "deployment" : "deployments"}</span>
           <span>·</span>
           <strong>{runningCount}</strong>
-          <span>{runningCount === 1 ? "running" : "running"}</span>
+          <span>running</span>
         </div>
       </header>
 
@@ -199,8 +208,15 @@ export function DashboardPage() {
             <DeploymentView deployment={selected} logs={logs} />
           ) : (
             <div className="main-empty">
+              <div className="main-empty-icon">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <polygon points="12 2 2 7 12 12 22 7 12 2"/>
+                  <polyline points="2 17 12 22 22 17"/>
+                  <polyline points="2 12 12 17 22 12"/>
+                </svg>
+              </div>
               <strong>No deployment selected</strong>
-              <span>Create one or select from the list.</span>
+              <span>Create one or pick from the list.</span>
             </div>
           )}
         </main>
