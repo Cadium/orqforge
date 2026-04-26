@@ -39,6 +39,7 @@ describe("railpack image builder", () => {
     const result = await builder.build(
       {
         id: "dep-1",
+        appName: "sample-dep-1",
         slug: "sample-dep-1",
         sourceKind: "sample",
         sourceRef: "hello-node",
@@ -83,6 +84,7 @@ describe("railpack image builder", () => {
       builder.build(
         {
           id: "dep-2",
+          appName: "sample-dep-2",
           slug: "sample-dep-2",
           sourceKind: "sample",
           sourceRef: "hello-node",

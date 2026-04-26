@@ -6,6 +6,7 @@ import type { DeploymentRepository } from "../../domain/deployment-repository.js
 
 interface DeploymentRow {
   id: string;
+  app_name: string | null;
   slug: string;
   source_kind: Deployment["sourceKind"];
   source_ref: string;
@@ -28,6 +29,7 @@ export class SqliteDeploymentRepository implements DeploymentRepository {
         `
           INSERT INTO deployments (
             id,
+            app_name,
             slug,
             source_kind,
             source_ref,
@@ -39,11 +41,12 @@ export class SqliteDeploymentRepository implements DeploymentRepository {
             failure_reason,
             created_at,
             updated_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
       )
       .run(
         deployment.id,
+        deployment.appName,
         deployment.slug,
         deployment.sourceKind,
         deployment.sourceRef,
@@ -64,6 +67,7 @@ export class SqliteDeploymentRepository implements DeploymentRepository {
         `
           SELECT
             id,
+            app_name,
             slug,
             source_kind,
             source_ref,
@@ -90,6 +94,7 @@ export class SqliteDeploymentRepository implements DeploymentRepository {
         `
           SELECT
             id,
+            app_name,
             slug,
             source_kind,
             source_ref,
@@ -117,6 +122,7 @@ export class SqliteDeploymentRepository implements DeploymentRepository {
           UPDATE deployments
           SET
             slug = ?,
+            app_name = ?,
             source_kind = ?,
             source_ref = ?,
             status = ?,
@@ -131,6 +137,7 @@ export class SqliteDeploymentRepository implements DeploymentRepository {
       )
       .run(
         deployment.slug,
+        deployment.appName,
         deployment.sourceKind,
         deployment.sourceRef,
         deployment.status,
@@ -148,6 +155,7 @@ export class SqliteDeploymentRepository implements DeploymentRepository {
 function mapDeploymentRow(row: DeploymentRow): Deployment {
   return {
     id: row.id,
+    appName: row.app_name ?? row.slug,
     slug: row.slug,
     sourceKind: row.source_kind,
     sourceRef: row.source_ref,

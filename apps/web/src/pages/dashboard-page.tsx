@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import type { Deployment, DeploymentLogEntry } from "@orqforge/shared";
+import type { Deployment, DeploymentLogEntry, DeploymentStage } from "@orqforge/shared";
 
 import { createDeployment, fetchDeployment, fetchDeployments, uploadArchive } from "../lib/api";
 import { useDeploymentLogs } from "../lib/use-deployment-logs";
@@ -11,6 +11,7 @@ type SourceKind = "sample" | "git" | "archive";
 export function DashboardPage() {
   const queryClient = useQueryClient();
   const [sourceKind, setSourceKind] = useState<SourceKind>("sample");
+  const [appName, setAppName] = useState("hello-node");
   const [gitUrl, setGitUrl] = useState("");
   const [archiveFile, setArchiveFile] = useState<File | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -46,16 +47,19 @@ export function DashboardPage() {
 
   const createMutation = useMutation({
     mutationFn: async () => {
+      const normalizedAppName = appName.trim();
+      if (!normalizedAppName) throw new Error("Enter an app name");
+
       if (sourceKind === "sample") {
-        return createDeployment({ sourceKind, sourceRef: "hello-node" });
+        return createDeployment({ appName: normalizedAppName, sourceKind, sourceRef: "hello-node" });
       }
       if (sourceKind === "git") {
         if (!gitUrl.trim()) throw new Error("Enter a repository URL");
-        return createDeployment({ sourceKind, sourceRef: gitUrl.trim() });
+        return createDeployment({ appName: normalizedAppName, sourceKind, sourceRef: gitUrl.trim() });
       }
       if (!archiveFile) throw new Error("Select an archive file first");
       const upload = await uploadArchive(archiveFile);
-      return createDeployment({ sourceKind, sourceRef: upload.upload.path });
+      return createDeployment({ appName: normalizedAppName, sourceKind, sourceRef: upload.upload.path });
     },
     onSuccess: async (payload) => {
       setSubmitError(null);
@@ -115,6 +119,18 @@ export function DashboardPage() {
                     {kind === "sample" ? "Sample" : kind === "git" ? "Git" : "Archive"}
                   </button>
                 ))}
+              </div>
+
+              <div className="form-field">
+                <label htmlFor="app-name">App name</label>
+                <input
+                  id="app-name"
+                  type="text"
+                  placeholder="marketing-site"
+                  value={appName}
+                  onChange={(e) => setAppName(e.target.value)}
+                  required
+                />
               </div>
 
               {sourceKind === "sample" && (
@@ -177,12 +193,14 @@ export function DashboardPage() {
                   <div className="deploy-card-top">
                     <div className="deploy-card-name">
                       <StatusDot status={dep.status} />
-                      <span>{dep.slug}</span>
+                      <span>{dep.appName}</span>
                     </div>
                     <StatusBadge status={dep.status} />
                   </div>
                   <div className="deploy-card-meta">
-                    {dep.sourceKind}:{truncate(dep.sourceRef, 28)}
+                    <span>{dep.slug}</span>
+                    <span>·</span>
+                    <span>{dep.sourceKind}:{truncate(dep.sourceRef, 18)}</span>
                   </div>
                 </button>
               ))}
@@ -239,6 +257,7 @@ function DeploymentView({ deployment, logs }: { deployment: Deployment; logs: De
   }
 
   const liveUrl = deployment.routePath ? `http://localhost:8080${deployment.routePath}` : null;
+  const failureCount = logs.filter((entry) => entry.stream === "stderr").length;
 
   return (
     <>
@@ -246,7 +265,10 @@ function DeploymentView({ deployment, logs }: { deployment: Deployment; logs: De
         <div className="deploy-hero-left">
           <div className="deploy-hero-name">
             <StatusDot status={deployment.status} />
-            <h1 className="deploy-slug">{deployment.slug}</h1>
+            <div className="deploy-hero-copy">
+              <h1 className="deploy-slug">{deployment.appName}</h1>
+              <span className="deploy-route-slug">{deployment.slug}</span>
+            </div>
           </div>
           <div className="deploy-hero-sub">
             <StatusBadge status={deployment.status} />
@@ -263,11 +285,38 @@ function DeploymentView({ deployment, logs }: { deployment: Deployment; logs: De
         </div>
       </div>
 
+      <div className="summary-ribbon">
+        <SummaryStat label="Status" value={statusLabel(deployment.status)} tone={deployment.status} />
+        <SummaryStat label="Stage" value={stageLabel(deployment.stage)} />
+        <SummaryStat label="Logs" value={String(logs.length)} />
+        <SummaryStat label="Errors" value={String(failureCount)} tone={failureCount > 0 ? "failed" : "running"} />
+        <SummaryStat label="Updated" value={relativeTime(deployment.updatedAt)} />
+      </div>
+
       {deployment.failureReason && (
         <div className="failure-banner">{deployment.failureReason}</div>
       )}
 
+      <div className="pipeline-strip">
+        {PIPELINE_STEPS.map((step, index) => {
+          const state = getStepState(step.stage, deployment.stage, deployment.status);
+
+          return (
+            <div key={step.stage} className={`pipeline-step ${state}`}>
+              <div className="pipeline-marker">
+                <span>{index + 1}</span>
+              </div>
+              <div className="pipeline-copy">
+                <span className="pipeline-title">{step.label}</span>
+                <span className="pipeline-caption">{step.caption}</span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
       <div className="meta-strip">
+        <MetaItem label="App"       value={deployment.appName} />
         <MetaItem label="Stage"     value={deployment.stage} />
         <MetaItem label="Source"    value={`${deployment.sourceKind}:${truncate(deployment.sourceRef, 26)}`} />
         <MetaItem label="Image"     value={deployment.imageTag} />
@@ -315,6 +364,23 @@ function LogLine({ entry }: { entry: DeploymentLogEntry }) {
   );
 }
 
+function SummaryStat({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: string;
+  tone?: "pending" | "building" | "deploying" | "running" | "failed";
+}) {
+  return (
+    <div className={`summary-stat${tone ? ` ${tone}` : ""}`}>
+      <span className="summary-label">{label}</span>
+      <strong className="summary-value">{value}</strong>
+    </div>
+  );
+}
+
 /* ── Meta item ───────────────────────────────────────────────── */
 
 function MetaItem({ label, value, link }: { label: string; value: string | null; link?: string }) {
@@ -349,6 +415,45 @@ function StatusBadge({ status }: { status: Deployment["status"] }) {
 
 /* ── Helpers ─────────────────────────────────────────────────── */
 
+const PIPELINE_STEPS: {
+  stage: DeploymentStage;
+  label: string;
+  caption: string;
+}[] = [
+  {
+    stage: "materializing_source",
+    label: "Source",
+    caption: "Workspace prepared",
+  },
+  {
+    stage: "building_image",
+    label: "Build",
+    caption: "Railpack image",
+  },
+  {
+    stage: "starting_container",
+    label: "Runtime",
+    caption: "Container boot",
+  },
+  {
+    stage: "configuring_ingress",
+    label: "Ingress",
+    caption: "Caddy route",
+  },
+  {
+    stage: "verifying_route",
+    label: "Verify",
+    caption: "Route health",
+  },
+  {
+    stage: "completed",
+    label: "Running",
+    caption: "Live traffic",
+  },
+];
+
+const STAGE_ORDER = PIPELINE_STEPS.map((step) => step.stage);
+
 function fmtTime(iso: string) {
   try {
     return new Date(iso).toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
@@ -366,4 +471,49 @@ function relativeTime(iso: string) {
 
 function truncate(s: string, n: number) {
   return s.length > n ? s.slice(0, n) + "…" : s;
+}
+
+function statusLabel(status: Deployment["status"]) {
+  switch (status) {
+    case "pending":
+      return "Pending";
+    case "building":
+      return "Building";
+    case "deploying":
+      return "Deploying";
+    case "running":
+      return "Running";
+    case "failed":
+      return "Failed";
+  }
+}
+
+function stageLabel(stage: DeploymentStage) {
+  return stage
+    .split("_")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function getStepState(
+  step: DeploymentStage,
+  currentStage: DeploymentStage,
+  status: Deployment["status"],
+) {
+  if (status === "failed" && step === currentStage) {
+    return "failed";
+  }
+
+  const stepIndex = STAGE_ORDER.indexOf(step);
+  const currentIndex = STAGE_ORDER.indexOf(currentStage);
+
+  if (stepIndex < currentIndex) {
+    return "complete";
+  }
+
+  if (stepIndex === currentIndex) {
+    return status === "running" && step === "completed" ? "complete" : "active";
+  }
+
+  return "pending";
 }

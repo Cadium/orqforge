@@ -38,6 +38,7 @@ describe("docker container runtime", () => {
     const result = await runtime.start(
       {
         id: "dep-1",
+        appName: "sample-dep-1",
         slug: "sample-dep-1",
         sourceKind: "sample",
         sourceRef: "hello-node",
@@ -66,4 +67,3 @@ function createTempDirectory() {
   temporaryDirectories.push(directory);
   return directory;
 }
-

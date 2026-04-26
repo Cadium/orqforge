@@ -2,12 +2,14 @@ import type { DeploymentSourceKind } from "./deployments.js";
 import type { DeploymentStage, DeploymentStatus } from "./deployments.js";
 
 export interface CreateDeploymentInput {
+  appName?: string;
   sourceKind: DeploymentSourceKind;
   sourceRef: string;
 }
 
 export interface Deployment {
   id: string;
+  appName: string;
   slug: string;
   sourceKind: DeploymentSourceKind;
   sourceRef: string;

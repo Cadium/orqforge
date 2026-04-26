@@ -2,6 +2,7 @@ PRAGMA journal_mode = WAL;
 
 CREATE TABLE IF NOT EXISTS deployments (
   id TEXT PRIMARY KEY,
+  app_name TEXT,
   slug TEXT NOT NULL UNIQUE,
   source_kind TEXT NOT NULL,
   source_ref TEXT NOT NULL,

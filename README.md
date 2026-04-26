@@ -52,7 +52,7 @@ curl http://localhost:8080/api/health
 ### Step 3 — Deploy the sample app
 
 1. Open [http://localhost:8080](http://localhost:8080)
-2. Click **Deploy** — the modal opens with the **Sample** tab active and `hello-node` pre-selected
+2. In the **New Deployment** panel, keep the **Sample** tab active, leave the default app name in place (or change it), and keep `hello-node` selected
 3. Click **Deploy** — a new deployment card appears in the sidebar with an amber pulsing status dot
 
 ### Step 4 — Watch the pipeline
@@ -125,6 +125,8 @@ source input  →  workspace  →  Railpack build  →  docker run  →  Caddy r
 | Sample | The bundled `hello-node` app (good for a first test) |
 | Git | Any public Git URL; the repo is cloned into a workspace |
 | Archive | A `.zip`, `.tar`, `.tgz`, or `.tar.gz` upload |
+
+Every deployment also accepts an **app name**. Orqforge uses that name to generate the live slug and route path, so reviewers can deploy the same source more than once without ending up with anonymous `sample-xxxx` style entries.
 
 **Deployment list** — all deployments with live status badges. Click to inspect.
 

@@ -26,6 +26,7 @@ describe("deployment routes", () => {
       method: "POST",
       url: "/api/deployments",
       payload: {
+        appName: "orqforge-web",
         sourceKind: "git",
         sourceRef: "https://github.com/Cadium/orqforge.git",
       },
@@ -35,6 +36,8 @@ describe("deployment routes", () => {
     const createPayload = createResponse.json();
     expect(createPayload.deployment.status).toBe("pending");
     expect(createPayload.deployment.stage).toBe("accepted");
+    expect(createPayload.deployment.appName).toBe("orqforge-web");
+    expect(createPayload.deployment.slug).toMatch(/^orqforge-web-/);
 
     const listResponse = await server.inject({
       method: "GET",
@@ -71,6 +74,7 @@ describe("deployment routes", () => {
       method: "POST",
       url: "/api/deployments",
       payload: {
+        appName: "",
         sourceKind: "unknown",
         sourceRef: "",
       },

@@ -32,6 +32,7 @@ describe("default source materializer", () => {
 
     const result = await materializer.materialize({
       id: "dep-1",
+      appName: "sample-dep-1",
       slug: "sample-dep-1",
       sourceKind: "sample",
       sourceRef: "hello-node",
@@ -78,6 +79,7 @@ describe("default source materializer", () => {
 
     const result = await materializer.materialize({
       id: "dep-2",
+      appName: "git-dep-2",
       slug: "git-dep-2",
       sourceKind: "git",
       sourceRef: repoPath,
@@ -111,6 +113,7 @@ describe("default source materializer", () => {
 
     const result = await materializer.materialize({
       id: "dep-3",
+      appName: "archive-dep-3",
       slug: "archive-dep-3",
       sourceKind: "archive",
       sourceRef: archivePath,

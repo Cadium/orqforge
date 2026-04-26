@@ -1,6 +1,7 @@
 import type { Deployment, DeploymentLogEntry } from "@orqforge/shared";
 
 export async function createDeployment(input: {
+  appName?: string;
   sourceKind: "git" | "archive" | "sample";
   sourceRef: string;
 }) {
@@ -78,4 +79,3 @@ async function readError(response: Response) {
     return `Request failed with status ${response.status}`;
   }
 }
-

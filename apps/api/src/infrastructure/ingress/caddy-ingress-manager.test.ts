@@ -26,6 +26,7 @@ describe("caddy ingress manager", () => {
     const result = await manager.provision(
       {
         id: "dep-1",
+        appName: "sample-dep-1",
         slug: "sample-dep-1",
         sourceKind: "sample",
         sourceRef: "hello-node",
@@ -58,4 +59,3 @@ function createTempDirectory() {
   temporaryDirectories.push(directory);
   return directory;
 }
-

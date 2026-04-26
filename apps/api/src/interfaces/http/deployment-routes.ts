@@ -58,6 +58,7 @@ function parseCreateDeploymentInput(body: unknown): CreateDeploymentInput {
 
   const sourceKind = getStringField(body, "sourceKind");
   const sourceRef = getStringField(body, "sourceRef");
+  const appName = getOptionalStringField(body, "appName");
 
   if (!DEPLOYMENT_SOURCE_KINDS.includes(sourceKind as CreateDeploymentInput["sourceKind"])) {
     throw new ValidationError(
@@ -66,6 +67,7 @@ function parseCreateDeploymentInput(body: unknown): CreateDeploymentInput {
   }
 
   return {
+    appName,
     sourceKind: sourceKind as CreateDeploymentInput["sourceKind"],
     sourceRef,
   };
@@ -76,6 +78,20 @@ function getStringField(body: object, fieldName: "sourceKind" | "sourceRef") {
 
   if (typeof value !== "string" || value.trim().length === 0) {
     throw new ValidationError(`${fieldName} must be a non-empty string`);
+  }
+
+  return value.trim();
+}
+
+function getOptionalStringField(body: object, fieldName: "appName") {
+  const value = Reflect.get(body, fieldName);
+
+  if (value == null) {
+    return undefined;
+  }
+
+  if (typeof value !== "string" || value.trim().length === 0) {
+    throw new ValidationError(`${fieldName} must be a non-empty string when provided`);
   }
 
   return value.trim();
