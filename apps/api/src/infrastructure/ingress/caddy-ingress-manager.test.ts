@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -51,6 +51,56 @@ describe("caddy ingress manager", () => {
     expect(result.routePath).toBe("/apps/sample-dep-1");
     expect(routeFile).toContain("handle_path /apps/sample-dep-1/*");
     expect(routeFile).toContain("reverse_proxy orqforge-sample-dep-1:3000");
+  });
+
+  it("removes a deployment route snippet", async () => {
+    const root = createTempDirectory();
+    const routesDirectory = join(root, "routes");
+
+    const manager = new CaddyIngressManager({
+      routesDirectory,
+    });
+
+    await manager.provision(
+      {
+        id: "dep-1",
+        appName: "sample-dep-1",
+        slug: "sample-dep-1",
+        sourceKind: "sample",
+        sourceRef: "hello-node",
+        status: "deploying",
+        stage: "configuring_ingress",
+        imageTag: "orqforge/sample-dep-1:dep-1",
+        routePath: null,
+        runtimeContainerName: "orqforge-sample-dep-1",
+        failureReason: null,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+      {
+        containerName: "orqforge-sample-dep-1",
+        upstreamHost: "orqforge-sample-dep-1",
+        upstreamPort: 3000,
+      },
+    );
+
+    await manager.remove({
+      id: "dep-1",
+      appName: "sample-dep-1",
+      slug: "sample-dep-1",
+      sourceKind: "sample",
+      sourceRef: "hello-node",
+      status: "running",
+      stage: "completed",
+      imageTag: "orqforge/sample-dep-1:dep-1",
+      routePath: "/apps/sample-dep-1",
+      runtimeContainerName: "orqforge-sample-dep-1",
+      failureReason: null,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+
+    expect(existsSync(join(routesDirectory, "sample-dep-1.caddy"))).toBe(false);
   });
 });
 

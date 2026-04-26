@@ -60,6 +60,7 @@ describe("deployment executor", () => {
           upstreamPort: 3000,
         };
       },
+      async stop() {},
     };
     const ingressManager: IngressManager = {
       async provision() {
@@ -67,6 +68,7 @@ describe("deployment executor", () => {
           routePath: "/apps/sample-dep-1",
         };
       },
+      async remove() {},
     };
     const routeVerifier: RouteVerifier = {
       async verify() {},
@@ -164,6 +166,7 @@ describe("deployment executor", () => {
           upstreamPort: 3000,
         };
       },
+      async stop() {},
     };
     const ingressManager: IngressManager = {
       async provision(deployment) {
@@ -171,6 +174,7 @@ describe("deployment executor", () => {
           routePath: `/apps/${deployment.slug}`,
         };
       },
+      async remove() {},
     };
     const routeVerifier: RouteVerifier = {
       async verify() {},

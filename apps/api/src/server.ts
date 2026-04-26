@@ -111,7 +111,14 @@ export function buildServer(options: BuildServerOptions = {}) {
   }));
 
   registerHealthRoutes(server);
-  registerDeploymentRoutes(server, { deploymentRepository, deploymentExecutor });
+  registerDeploymentRoutes(server, {
+    deploymentRepository,
+    deploymentExecutor,
+    logRepository,
+    logPublisher,
+    containerRuntime,
+    ingressManager,
+  });
   registerLogRoutes(server, { logRepository, logPublisher });
   registerUploadRoutes(server, {
     uploadsRoot: process.env.UPLOADS_ROOT ?? ".data/uploads",

@@ -6,13 +6,23 @@ import {
   type DeploymentSourceKind,
 } from "@orqforge/shared";
 
+import type { ContainerRuntime } from "../domain/container-runtime.js";
 import type { DeploymentRepository } from "../domain/deployment-repository.js";
+import type { IngressManager } from "../domain/ingress-manager.js";
+import type { LogPublisher } from "../domain/log-publisher.js";
+import { ValidationError } from "../domain/errors.js";
 import type { DeploymentExecutor } from "./deployment-executor.js";
+import { DeploymentLogService } from "./deployment-log-service.js";
+import { deriveStatusFromStage, transitionStage } from "./deployment-state-machine.js";
 
 export class DeploymentService {
   constructor(
     private readonly deploymentRepository: DeploymentRepository,
     private readonly deploymentExecutor?: DeploymentExecutor,
+    private readonly deploymentLogService?: DeploymentLogService,
+    private readonly logPublisher?: LogPublisher,
+    private readonly containerRuntime?: ContainerRuntime,
+    private readonly ingressManager?: IngressManager,
   ) {}
 
   createDeployment(input: CreateDeploymentInput): Deployment {
@@ -49,6 +59,72 @@ export class DeploymentService {
 
   getDeploymentById(id: string) {
     return this.deploymentRepository.findById(id);
+  }
+
+  async stopDeployment(id: string) {
+    const deployment = this.deploymentRepository.findById(id);
+
+    if (!deployment) {
+      return null;
+    }
+
+    if (deployment.status !== "running" || deployment.stage !== "completed") {
+      throw new ValidationError("Only running deployments can be stopped");
+    }
+
+    if (!deployment.runtimeContainerName) {
+      throw new ValidationError("Running deployment is missing container metadata");
+    }
+
+    if (!this.deploymentLogService || !this.logPublisher || !this.containerRuntime || !this.ingressManager) {
+      throw new Error("Stopping a deployment requires runtime, ingress, and log dependencies");
+    }
+
+    const log = (stream: "stdout" | "stderr" | "system", message: string, createdAt?: string) =>
+      this.deploymentLogService?.appendLog({
+        deploymentId: deployment.id,
+        stage: deployment.stage,
+        stream,
+        message,
+        createdAt: createdAt ?? new Date().toISOString(),
+      });
+
+    log("system", `Stopping deployment ${deployment.slug}`);
+
+    await this.containerRuntime.stop(deployment.runtimeContainerName, (event) => {
+      log(event.stream, event.message);
+    });
+
+    if (deployment.routePath) {
+      await this.ingressManager.remove(deployment);
+      log("system", `Removed Caddy route ${deployment.routePath}`);
+    }
+
+    const updatedAt = new Date().toISOString();
+    const stoppedDeployment: Deployment = {
+      ...deployment,
+      stage: transitionStage(deployment.stage, "stopped"),
+      status: deriveStatusFromStage("stopped"),
+      routePath: null,
+      runtimeContainerName: null,
+      failureReason: null,
+      updatedAt,
+    };
+
+    this.deploymentRepository.update(stoppedDeployment);
+    this.logPublisher.publishStatus({
+      type: "status",
+      deployment: stoppedDeployment,
+    });
+    this.deploymentLogService.appendLog({
+      deploymentId: deployment.id,
+      stage: "stopped",
+      stream: "system",
+      message: `Deployment ${deployment.slug} has been stopped`,
+      createdAt: updatedAt,
+    });
+
+    return stoppedDeployment;
   }
 }
 

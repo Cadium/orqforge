@@ -16,5 +16,9 @@ export interface ContainerRuntime {
     deployment: Deployment,
     onLog: (event: RuntimeLogEvent) => void,
   ): Promise<StartedContainer>;
-}
 
+  stop(
+    containerName: string,
+    onLog: (event: RuntimeLogEvent) => void,
+  ): Promise<void>;
+}

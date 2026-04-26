@@ -60,6 +60,27 @@ describe("docker container runtime", () => {
     expect(logs.some((line) => line.includes("container started"))).toBe(true);
     expect(logs.some((line) => line.includes("runtime warning"))).toBe(true);
   });
+
+  it("runs the stop command for a named container", async () => {
+    const root = createTempDirectory();
+    const scriptPath = join(root, "fake-stop.mjs");
+
+    writeFileSync(scriptPath, "console.log('container removed');\n");
+
+    const logs: string[] = [];
+    const runtime = new DockerContainerRuntime({
+      stopCommandFactory: (containerName) => ({
+        command: "node",
+        args: [scriptPath, containerName],
+      }),
+    });
+
+    await runtime.stop("orqforge-sample-dep-1", (event) => {
+      logs.push(`${event.stream}:${event.message}`);
+    });
+
+    expect(logs.some((line) => line.includes("container removed"))).toBe(true);
+  });
 });
 
 function createTempDirectory() {

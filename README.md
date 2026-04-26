@@ -185,6 +185,7 @@ sample-apps/
 | `POST` | `/api/deployments` | Create deployment |
 | `GET` | `/api/deployments` | List all deployments |
 | `GET` | `/api/deployments/:id` | Get deployment detail |
+| `POST` | `/api/deployments/:id/stop` | Stop a running deployment and remove its route |
 | `GET` | `/api/deployments/:id/logs` | Fetch persisted logs |
 | `GET` | `/api/deployments/:id/logs/stream` | SSE log stream |
 | `POST` | `/api/uploads` | Upload an archive |
@@ -200,9 +201,29 @@ curl -X POST http://localhost:8080/api/deployments \
   -H "content-type: application/json" \
   -d '{"sourceKind":"sample","sourceRef":"hello-node"}'
 
+# stop a running deployment
+curl -X POST http://localhost:8080/api/deployments/<id>/stop
+
 # stream logs
 curl -N http://localhost:8080/api/deployments/<id>/logs/stream
 ```
+
+### Archive smoke test
+
+Create a tarball from the bundled sample app:
+
+```bash
+tar -czf /tmp/hello-node.tar.gz -C sample-apps/hello-node .
+```
+
+Then in the dashboard:
+
+1. choose the `Archive` tab
+2. enter an app name
+3. upload `/tmp/hello-node.tar.gz`
+4. click `Deploy`
+
+This is the fastest way to verify the archive path with a known-good app before trying arbitrary project uploads.
 
 ---
 

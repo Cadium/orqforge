@@ -30,6 +30,18 @@ export async function fetchDeployment(id: string) {
   return (await response.json()) as { deployment: Deployment };
 }
 
+export async function stopDeployment(id: string) {
+  const response = await fetch(`/api/deployments/${id}/stop`, {
+    method: "POST",
+  });
+
+  if (!response.ok) {
+    throw new Error(await readError(response));
+  }
+
+  return (await response.json()) as { deployment: Deployment };
+}
+
 export async function fetchDeployments() {
   const response = await fetch("/api/deployments");
 

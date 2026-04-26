@@ -21,6 +21,7 @@ interface DockerContainerRuntimeOptions {
   ) => DockerCommand;
   containerNameFactory?: (deployment: Deployment) => string;
   upstreamPort?: number;
+  stopCommandFactory?: (containerName: string) => DockerCommand;
 }
 
 export class DockerContainerRuntime implements ContainerRuntime {
@@ -31,12 +32,14 @@ export class DockerContainerRuntime implements ContainerRuntime {
 
   private readonly containerNameFactory: (deployment: Deployment) => string;
   private readonly upstreamPort: number;
+  private readonly stopCommandFactory: (containerName: string) => DockerCommand;
 
   constructor(options: DockerContainerRuntimeOptions = {}) {
     this.commandFactory = options.commandFactory ?? defaultDockerCommandFactory;
     this.containerNameFactory =
       options.containerNameFactory ?? defaultContainerNameFactory;
     this.upstreamPort = options.upstreamPort ?? 3000;
+    this.stopCommandFactory = options.stopCommandFactory ?? defaultStopCommandFactory;
   }
 
   async start(
@@ -63,6 +66,20 @@ export class DockerContainerRuntime implements ContainerRuntime {
       upstreamPort: this.upstreamPort,
     };
   }
+
+  async stop(
+    containerName: string,
+    onLog: (event: RuntimeLogEvent) => void,
+  ): Promise<void> {
+    const command = this.stopCommandFactory(containerName);
+
+    onLog({
+      stream: "stdout",
+      message: `Running stop command: ${command.command} ${command.args.join(" ")}`,
+    });
+
+    await runCommand(command, onLog);
+  }
 }
 
 function defaultContainerNameFactory(deployment: Deployment) {
@@ -86,6 +103,14 @@ function defaultDockerCommandFactory(
       "PORT=3000",
       deployment.imageTag ?? "",
     ],
+    env: process.env,
+  };
+}
+
+function defaultStopCommandFactory(containerName: string): DockerCommand {
+  return {
+    command: process.env.DOCKER_BIN ?? "docker",
+    args: ["rm", "-f", containerName],
     env: process.env,
   };
 }
@@ -150,4 +175,3 @@ function emitLines(
 
   return remainder;
 }
-

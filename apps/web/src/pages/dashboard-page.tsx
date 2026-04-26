@@ -3,7 +3,13 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import type { Deployment, DeploymentLogEntry, DeploymentStage } from "@orqforge/shared";
 
-import { createDeployment, fetchDeployment, fetchDeployments, uploadArchive } from "../lib/api";
+import {
+  createDeployment,
+  fetchDeployment,
+  fetchDeployments,
+  stopDeployment,
+  uploadArchive,
+} from "../lib/api";
 import { useDeploymentLogs } from "../lib/use-deployment-logs";
 
 type SourceKind = "sample" | "git" | "archive";
@@ -69,6 +75,14 @@ export function DashboardPage() {
     },
     onError: (err) =>
       setSubmitError(err instanceof Error ? err.message : "Deployment failed"),
+  });
+
+  const stopMutation = useMutation({
+    mutationFn: async (deploymentId: string) => stopDeployment(deploymentId),
+    onSuccess: async (payload) => {
+      await queryClient.invalidateQueries({ queryKey: ["deployments"] });
+      await queryClient.invalidateQueries({ queryKey: ["deployment", payload.deployment.id] });
+    },
   });
 
   async function handleSubmit(e: FormEvent) {
@@ -217,7 +231,12 @@ export function DashboardPage() {
 
         <main className="main-panel">
           {selected ? (
-            <DeploymentView deployment={selected} logs={logs} />
+            <DeploymentView
+              deployment={selected}
+              logs={logs}
+              onStop={async () => stopMutation.mutateAsync(selected.id)}
+              isStopping={stopMutation.isPending}
+            />
           ) : (
             <div className="main-empty">
               <div className="main-empty-icon">
@@ -239,7 +258,17 @@ export function DashboardPage() {
 
 /* ── Deployment view ─────────────────────────────────────────── */
 
-function DeploymentView({ deployment, logs }: { deployment: Deployment; logs: DeploymentLogEntry[] }) {
+function DeploymentView({
+  deployment,
+  logs,
+  onStop,
+  isStopping,
+}: {
+  deployment: Deployment;
+  logs: DeploymentLogEntry[];
+  onStop: () => Promise<unknown>;
+  isStopping: boolean;
+}) {
   const logRef = useRef<HTMLDivElement>(null);
   const [autoScroll, setAutoScroll] = useState(true);
 
@@ -281,6 +310,16 @@ function DeploymentView({ deployment, logs }: { deployment: Deployment; logs: De
             <a href={liveUrl} target="_blank" rel="noreferrer" className="visit-btn">
               Open app ↗
             </a>
+          )}
+          {deployment.status === "running" && (
+            <button
+              type="button"
+              className="stop-btn"
+              onClick={() => void onStop()}
+              disabled={isStopping}
+            >
+              {isStopping ? "Stopping…" : "Stop app"}
+            </button>
           )}
         </div>
       </div>
@@ -371,7 +410,7 @@ function SummaryStat({
 }: {
   label: string;
   value: string;
-  tone?: "pending" | "building" | "deploying" | "running" | "failed";
+  tone?: "pending" | "building" | "deploying" | "running" | "stopped" | "failed";
 }) {
   return (
     <div className={`summary-stat${tone ? ` ${tone}` : ""}`}>
@@ -408,7 +447,7 @@ function StatusDot({ status }: { status: Deployment["status"] }) {
 function StatusBadge({ status }: { status: Deployment["status"] }) {
   const label: Record<Deployment["status"], string> = {
     pending: "Pending", building: "Building", deploying: "Deploying",
-    running: "Running", failed: "Failed",
+    running: "Running", stopped: "Stopped", failed: "Failed",
   };
   return <span className={`status-badge ${status}`}>{label[status]}</span>;
 }
@@ -483,6 +522,8 @@ function statusLabel(status: Deployment["status"]) {
       return "Deploying";
     case "running":
       return "Running";
+    case "stopped":
+      return "Stopped";
     case "failed":
       return "Failed";
   }
@@ -502,6 +543,10 @@ function getStepState(
 ) {
   if (status === "failed" && step === currentStage) {
     return "failed";
+  }
+
+  if (status === "stopped") {
+    return "complete";
   }
 
   const stepIndex = STAGE_ORDER.indexOf(step);

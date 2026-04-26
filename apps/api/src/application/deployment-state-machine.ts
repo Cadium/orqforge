@@ -11,7 +11,8 @@ const ALLOWED_STAGE_TRANSITIONS: Record<DeploymentStage, DeploymentStage[]> = {
   starting_container: ["configuring_ingress", "failed"],
   configuring_ingress: ["verifying_route", "failed"],
   verifying_route: ["completed", "failed"],
-  completed: [],
+  completed: ["stopped"],
+  stopped: [],
   failed: [],
 };
 
@@ -38,4 +39,3 @@ export function transitionStage(
 export function deriveStatusFromStage(stage: DeploymentStage): DeploymentStatus {
   return DEPLOYMENT_STAGE_TO_STATUS[stage];
 }
-

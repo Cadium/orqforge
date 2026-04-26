@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 import type { Deployment } from "@orqforge/shared";
@@ -43,6 +43,16 @@ export class CaddyIngressManager implements IngressManager {
     await this.reloadCaddy();
 
     return { routePath };
+  }
+
+  async remove(deployment: Deployment): Promise<void> {
+    const routeFilePath = join(this.routesDirectory, `${deployment.slug}.caddy`);
+
+    if (existsSync(routeFilePath)) {
+      rmSync(routeFilePath);
+    }
+
+    await this.reloadCaddy();
   }
 
   private async reloadCaddy() {

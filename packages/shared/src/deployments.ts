@@ -7,6 +7,7 @@ export const DEPLOYMENT_STATUSES = [
   "building",
   "deploying",
   "running",
+  "stopped",
   "failed",
 ] as const;
 
@@ -20,6 +21,7 @@ export const DEPLOYMENT_STAGES = [
   "configuring_ingress",
   "verifying_route",
   "completed",
+  "stopped",
   "failed",
 ] as const;
 
@@ -36,6 +38,6 @@ export const DEPLOYMENT_STAGE_TO_STATUS: Record<
   configuring_ingress: "deploying",
   verifying_route: "deploying",
   completed: "running",
+  stopped: "stopped",
   failed: "failed",
 };
-

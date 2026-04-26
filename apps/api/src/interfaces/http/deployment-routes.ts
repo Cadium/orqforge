@@ -6,13 +6,22 @@ import {
 } from "@orqforge/shared";
 
 import type { DeploymentExecutor } from "../../application/deployment-executor.js";
+import { DeploymentLogService } from "../../application/deployment-log-service.js";
 import { DeploymentService } from "../../application/deployment-service.js";
+import type { ContainerRuntime } from "../../domain/container-runtime.js";
 import type { DeploymentRepository } from "../../domain/deployment-repository.js";
+import type { DeploymentLogRepository } from "../../domain/deployment-log-repository.js";
 import { ValidationError } from "../../domain/errors.js";
+import type { IngressManager } from "../../domain/ingress-manager.js";
+import type { LogPublisher } from "../../domain/log-publisher.js";
 
 interface DeploymentRouteDependencies {
   deploymentRepository: DeploymentRepository;
   deploymentExecutor?: DeploymentExecutor;
+  logRepository?: DeploymentLogRepository;
+  logPublisher?: LogPublisher;
+  containerRuntime?: ContainerRuntime;
+  ingressManager?: IngressManager;
 }
 
 export function registerDeploymentRoutes(
@@ -22,6 +31,12 @@ export function registerDeploymentRoutes(
   const deploymentService = new DeploymentService(
     dependencies.deploymentRepository,
     dependencies.deploymentExecutor,
+    dependencies.logRepository && dependencies.logPublisher
+      ? new DeploymentLogService(dependencies.logRepository, dependencies.logPublisher)
+      : undefined,
+    dependencies.logPublisher,
+    dependencies.containerRuntime,
+    dependencies.ingressManager,
   );
 
   server.get("/api/deployments", async () => ({
@@ -49,6 +64,21 @@ export function registerDeploymentRoutes(
 
     return reply.code(201).send({ deployment });
   });
+
+  server.post<{ Params: { deploymentId: string } }>(
+    "/api/deployments/:deploymentId/stop",
+    async (request, reply) => {
+      const deployment = await deploymentService.stopDeployment(request.params.deploymentId);
+
+      if (!deployment) {
+        return reply.code(404).send({
+          message: `Deployment ${request.params.deploymentId} was not found`,
+        });
+      }
+
+      return { deployment };
+    },
+  );
 }
 
 function parseCreateDeploymentInput(body: unknown): CreateDeploymentInput {

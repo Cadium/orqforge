@@ -4,6 +4,8 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
+import type { ContainerRuntime } from "../../domain/container-runtime.js";
+import type { IngressManager } from "../../domain/ingress-manager.js";
 import { createDatabase } from "../../infrastructure/sqlite/database.js";
 import { InMemoryLogPublisher } from "../../infrastructure/logging/in-memory-log-publisher.js";
 import { SqliteDeploymentLogRepository } from "../../infrastructure/sqlite/sqlite-deployment-log-repository.js";
@@ -20,7 +22,7 @@ afterEach(() => {
 
 describe("deployment routes", () => {
   it("creates and lists deployments", async () => {
-    const server = createTestServer();
+    const { server } = createTestServer();
 
     const createResponse = await server.inject({
       method: "POST",
@@ -55,7 +57,7 @@ describe("deployment routes", () => {
   });
 
   it("returns 404 for an unknown deployment", async () => {
-    const server = createTestServer();
+    const { server } = createTestServer();
 
     const response = await server.inject({
       method: "GET",
@@ -68,7 +70,7 @@ describe("deployment routes", () => {
   });
 
   it("rejects invalid create payloads", async () => {
-    const server = createTestServer();
+    const { server } = createTestServer();
 
     const response = await server.inject({
       method: "POST",
@@ -84,9 +86,71 @@ describe("deployment routes", () => {
 
     await server.close();
   });
+
+  it("stops a running deployment and clears runtime routing metadata", async () => {
+    const stoppedContainers: string[] = [];
+    const removedRoutes: string[] = [];
+    const { server, deploymentRepository } = createTestServer({
+      containerRuntime: {
+        async start() {
+          throw new Error("not used");
+        },
+        async stop(containerName, onLog) {
+          stoppedContainers.push(containerName);
+          onLog({ stream: "stdout", message: `removed ${containerName}` });
+        },
+      },
+      ingressManager: {
+        async provision() {
+          throw new Error("not used");
+        },
+        async remove(deployment) {
+          removedRoutes.push(deployment.slug);
+        },
+      },
+    });
+
+    const createResponse = await server.inject({
+      method: "POST",
+      url: "/api/deployments",
+      payload: {
+        appName: "sample-app",
+        sourceKind: "sample",
+        sourceRef: "hello-node",
+      },
+    });
+
+    const createdDeployment = createResponse.json().deployment;
+    deploymentRepository.update({
+      ...createdDeployment,
+      status: "running",
+      stage: "completed",
+      routePath: `/apps/${createdDeployment.slug}`,
+      runtimeContainerName: `orqforge-${createdDeployment.slug}`,
+    });
+
+    const response = await server.inject({
+      method: "POST",
+      url: `/api/deployments/${createdDeployment.id}/stop`,
+    });
+
+    expect(response.statusCode).toBe(200);
+    const payload = response.json();
+    expect(payload.deployment.status).toBe("stopped");
+    expect(payload.deployment.stage).toBe("stopped");
+    expect(payload.deployment.routePath).toBeNull();
+    expect(payload.deployment.runtimeContainerName).toBeNull();
+    expect(stoppedContainers).toEqual([`orqforge-${createdDeployment.slug}`]);
+    expect(removedRoutes).toEqual([createdDeployment.slug]);
+
+    await server.close();
+  });
 });
 
-function createTestServer() {
+function createTestServer(overrides: {
+  containerRuntime?: ContainerRuntime;
+  ingressManager?: IngressManager;
+} = {}) {
   const temporaryDirectory = mkdtempSync(join(tmpdir(), "orqforge-api-test-"));
   temporaryDirectories.push(temporaryDirectory);
 
@@ -95,10 +159,17 @@ function createTestServer() {
   const logRepository = new SqliteDeploymentLogRepository(database);
   const logPublisher = new InMemoryLogPublisher();
 
-  return buildServer({
+  const server = buildServer({
+      deploymentRepository,
+      logRepository,
+      logPublisher,
+      deploymentExecutor: null,
+      containerRuntime: overrides.containerRuntime,
+      ingressManager: overrides.ingressManager,
+    });
+
+  return {
+    server,
     deploymentRepository,
-    logRepository,
-    logPublisher,
-    deploymentExecutor: null,
-  });
+  };
 }

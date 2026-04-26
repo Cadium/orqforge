@@ -387,6 +387,10 @@ a {
   box-shadow: 0 0 10px rgba(67, 216, 161, 0.7);
 }
 
+.status-dot.stopped {
+  background: var(--text-faint);
+}
+
 .status-dot.failed {
   background: var(--red);
 }
@@ -425,6 +429,11 @@ a {
 .status-badge.running {
   background: var(--green-soft);
   color: var(--green);
+}
+
+.status-badge.stopped {
+  background: rgba(150, 163, 187, 0.14);
+  color: var(--text-muted);
 }
 
 .status-badge.failed {
@@ -507,6 +516,13 @@ a {
   font-size: 11.5px;
 }
 
+.deploy-hero-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 .visit-btn {
   display: inline-flex;
   align-items: center;
@@ -523,6 +539,30 @@ a {
 .visit-btn:hover {
   border-color: rgba(255, 138, 61, 0.45);
   color: var(--accent-2);
+}
+
+.stop-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 9px 14px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 125, 125, 0.2);
+  background: rgba(255, 125, 125, 0.08);
+  color: var(--red);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.stop-btn:hover:not(:disabled) {
+  border-color: rgba(255, 125, 125, 0.36);
+  background: rgba(255, 125, 125, 0.12);
+}
+
+.stop-btn:disabled {
+  opacity: 0.6;
+  cursor: wait;
 }
 
 .summary-ribbon {
@@ -543,6 +583,10 @@ a {
 
 .summary-stat.running {
   border-color: rgba(67, 216, 161, 0.16);
+}
+
+.summary-stat.stopped {
+  border-color: rgba(150, 163, 187, 0.18);
 }
 
 .summary-stat.failed {

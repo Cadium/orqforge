@@ -11,5 +11,6 @@ export interface IngressManager {
     deployment: Deployment,
     container: StartedContainer,
   ): Promise<ProvisionedRoute>;
-}
 
+  remove(deployment: Deployment): Promise<void>;
+}
