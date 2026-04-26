@@ -7,7 +7,7 @@ services:
         apk add --no-cache docker-cli git unzip tar curl &&
         curl -sSL https://railpack.com/install.sh | sh &&
         corepack enable &&
-        pnpm install --frozen-lockfile &&
+        pnpm install --no-frozen-lockfile &&
         pnpm --filter @orqforge/api dev
       "
     depends_on:
@@ -40,7 +40,7 @@ services:
     command: >
       sh -c "
         corepack enable &&
-        pnpm install --frozen-lockfile &&
+        pnpm install --no-frozen-lockfile &&
         pnpm --filter @orqforge/web dev --host 0.0.0.0 --port 3000
       "
     ports:
@@ -56,11 +56,11 @@ services:
     command: ["--addr", "tcp://0.0.0.0:1234"]
     privileged: true
     healthcheck:
-      test: ["CMD", "buildctl", "debug", "workers"]
+      test: ["CMD", "buildctl", "--addr", "tcp://localhost:1234", "debug", "workers"]
       interval: 3s
       timeout: 5s
-      retries: 10
-      start_period: 5s
+      retries: 15
+      start_period: 8s
     networks:
       - orqforge
 
