@@ -3,13 +3,16 @@ services:
     image: node:22-alpine
     working_dir: /workspace
     command: >
-      sh -c "apk add --no-cache docker-cli git unzip tar curl &&
-      curl -sSL https://railpack.com/install.sh | sh -s -- --bin-dir /usr/local/bin &&
-      corepack enable &&
-      pnpm install &&
-      pnpm --filter @orqforge/api dev"
+      sh -c "
+        apk add --no-cache docker-cli git unzip tar curl &&
+        curl -fsSL https://railpack.com/install.sh | sh -s -- --bin-dir /usr/local/bin &&
+        corepack enable &&
+        pnpm install --frozen-lockfile &&
+        pnpm --filter @orqforge/api dev
+      "
     depends_on:
-      - buildkitd
+      buildkitd:
+        condition: service_healthy
     environment:
       HOST: 0.0.0.0
       PORT: 4000
@@ -17,6 +20,8 @@ services:
       CADDY_ROUTES_DIR: /workspace/infra/caddy/routes
       ORQFORGE_ROUTE_BASE_URL: http://caddy
       UPLOADS_ROOT: /workspace/.data/uploads
+      WORKSPACES_ROOT: /workspace/.data/workspaces
+      DATABASE_PATH: /workspace/.data/orqforge.sqlite
       BUILDKIT_HOST: tcp://buildkitd:1234
     ports:
       - "4000:4000"
@@ -31,9 +36,11 @@ services:
     image: node:22-alpine
     working_dir: /workspace
     command: >
-      sh -c "corepack enable &&
-      pnpm install &&
-      pnpm --filter @orqforge/web dev --host 0.0.0.0 --port 3000"
+      sh -c "
+        corepack enable &&
+        pnpm install --frozen-lockfile &&
+        pnpm --filter @orqforge/web dev --host 0.0.0.0 --port 3000
+      "
     ports:
       - "3000:3000"
     volumes:
@@ -46,6 +53,12 @@ services:
     image: moby/buildkit:latest
     command: ["--addr", "tcp://0.0.0.0:1234"]
     privileged: true
+    healthcheck:
+      test: ["CMD", "buildctl", "debug", "workers"]
+      interval: 3s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
     networks:
       - orqforge
 
@@ -54,7 +67,14 @@ services:
     depends_on:
       - api
       - web
-    command: ["caddy", "run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile", "--watch"]
+    command:
+      - caddy
+      - run
+      - --config
+      - /etc/caddy/Caddyfile
+      - --adapter
+      - caddyfile
+      - --watch
     ports:
       - "8080:80"
     volumes:
