@@ -30,6 +30,7 @@ services:
     volumes:
       - ../../:/workspace
       - orqforge-pnpm-store:/root/.local/share/pnpm/store
+      - orqforge-node-modules:/workspace/node_modules
       - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - orqforge
@@ -48,6 +49,7 @@ services:
     volumes:
       - ../../:/workspace
       - orqforge-pnpm-store:/root/.local/share/pnpm/store
+      - orqforge-node-modules:/workspace/node_modules
     networks:
       - orqforge
 
@@ -87,6 +89,7 @@ services:
 
 volumes:
   orqforge-pnpm-store:
+  orqforge-node-modules:
 
 networks:
   orqforge:
