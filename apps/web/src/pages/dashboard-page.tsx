@@ -61,9 +61,7 @@ export function DashboardPage() {
       setSubmitError(null);
       setSelectedId(payload.deployment.id);
       await queryClient.invalidateQueries({ queryKey: ["deployments"] });
-      await queryClient.invalidateQueries({
-        queryKey: ["deployment", payload.deployment.id],
-      });
+      await queryClient.invalidateQueries({ queryKey: ["deployment", payload.deployment.id] });
     },
     onError: (err) =>
       setSubmitError(err instanceof Error ? err.message : "Deployment failed"),
@@ -79,7 +77,7 @@ export function DashboardPage() {
       <header className="topbar">
         <div className="topbar-brand">
           <span className="topbar-icon">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <polygon points="12 2 2 7 12 12 22 7 12 2"/>
               <polyline points="2 17 12 22 22 17"/>
               <polyline points="2 12 12 17 22 12"/>
@@ -104,7 +102,7 @@ export function DashboardPage() {
       <div className="workspace">
         <aside className="sidebar">
           <div className="new-deploy-panel">
-            <p className="panel-label">New Deployment</p>
+            <p className="section-label">New Deployment</p>
             <form onSubmit={handleSubmit}>
               <div className="source-tabs" role="group" aria-label="Source type">
                 {(["sample", "git", "archive"] as SourceKind[]).map((kind) => (
@@ -121,7 +119,7 @@ export function DashboardPage() {
 
               {sourceKind === "sample" && (
                 <div className="form-field">
-                  <label htmlFor="sample-select">Sample app</label>
+                  <label htmlFor="sample-select">App</label>
                   <select id="sample-select" disabled defaultValue="hello-node">
                     <option value="hello-node">hello-node</option>
                   </select>
@@ -157,11 +155,7 @@ export function DashboardPage() {
 
               {submitError && <p className="form-error">{submitError}</p>}
 
-              <button
-                className="deploy-btn"
-                type="submit"
-                disabled={createMutation.isPending}
-              >
+              <button className="deploy-btn" type="submit" disabled={createMutation.isPending}>
                 {createMutation.isPending ? "Deploying…" : "Deploy →"}
               </button>
             </form>
@@ -169,8 +163,8 @@ export function DashboardPage() {
 
           <div className="deploy-list-panel">
             <div className="deploy-list-header">
-              <p className="panel-label">Deployments</p>
-              <span className="count-badge">{deployments.length}</span>
+              <p className="section-label">Deployments</p>
+              <span className="count-pill">{deployments.length}</span>
             </div>
             <div className="deploy-list">
               {deployments.map((dep) => (
@@ -180,7 +174,7 @@ export function DashboardPage() {
                   className={`deploy-card${dep.id === selected?.id ? " selected" : ""}`}
                   onClick={() => setSelectedId(dep.id)}
                 >
-                  <div className="deploy-card-row">
+                  <div className="deploy-card-top">
                     <div className="deploy-card-name">
                       <StatusDot status={dep.status} />
                       <span>{dep.slug}</span>
@@ -188,7 +182,7 @@ export function DashboardPage() {
                     <StatusBadge status={dep.status} />
                   </div>
                   <div className="deploy-card-meta">
-                    {dep.sourceKind}:{truncate(dep.sourceRef, 30)}
+                    {dep.sourceKind}:{truncate(dep.sourceRef, 28)}
                   </div>
                 </button>
               ))}
@@ -209,7 +203,7 @@ export function DashboardPage() {
           ) : (
             <div className="main-empty">
               <div className="main-empty-icon">
-                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                   <polygon points="12 2 2 7 12 12 22 7 12 2"/>
                   <polyline points="2 17 12 22 22 17"/>
                   <polyline points="2 12 12 17 22 12"/>
@@ -227,13 +221,7 @@ export function DashboardPage() {
 
 /* ── Deployment view ─────────────────────────────────────────── */
 
-function DeploymentView({
-  deployment,
-  logs,
-}: {
-  deployment: Deployment;
-  logs: DeploymentLogEntry[];
-}) {
+function DeploymentView({ deployment, logs }: { deployment: Deployment; logs: DeploymentLogEntry[] }) {
   const logRef = useRef<HTMLDivElement>(null);
   const [autoScroll, setAutoScroll] = useState(true);
 
@@ -250,19 +238,23 @@ function DeploymentView({
     setAutoScroll(atBottom);
   }
 
-  const liveUrl =
-    deployment.routePath ? `http://localhost:8080${deployment.routePath}` : null;
+  const liveUrl = deployment.routePath ? `http://localhost:8080${deployment.routePath}` : null;
 
   return (
     <>
-      <div className="deploy-header">
-        <div className="deploy-title-group">
-          <StatusDot status={deployment.status} />
-          <span className="deploy-slug">{deployment.slug}</span>
-          <StatusBadge status={deployment.status} />
-          <span className="deploy-id">{deployment.id.slice(0, 8)}</span>
+      <div className="deploy-hero">
+        <div className="deploy-hero-left">
+          <div className="deploy-hero-name">
+            <StatusDot status={deployment.status} />
+            <h1 className="deploy-slug">{deployment.slug}</h1>
+          </div>
+          <div className="deploy-hero-sub">
+            <StatusBadge status={deployment.status} />
+            <span className="deploy-id-chip">{deployment.id.slice(0, 8)}</span>
+            <span className="deploy-time">{relativeTime(deployment.updatedAt)}</span>
+          </div>
         </div>
-        <div className="deploy-actions">
+        <div className="deploy-hero-actions">
           {liveUrl && deployment.status === "running" && (
             <a href={liveUrl} target="_blank" rel="noreferrer" className="visit-btn">
               Open app ↗
@@ -275,23 +267,19 @@ function DeploymentView({
         <div className="failure-banner">{deployment.failureReason}</div>
       )}
 
-      <dl className="meta-grid">
-        <MetaCell label="Stage"     value={deployment.stage} />
-        <MetaCell label="Image"     value={deployment.imageTag} />
-        <MetaCell label="Container" value={deployment.runtimeContainerName} />
-        <MetaCell
-          label="Source"
-          value={`${deployment.sourceKind} · ${truncate(deployment.sourceRef, 38)}`}
-        />
-        <MetaCell label="Route"   value={deployment.routePath} link={liveUrl ?? undefined} />
-        <MetaCell label="Updated" value={relativeTime(deployment.updatedAt)} />
-      </dl>
+      <div className="meta-strip">
+        <MetaItem label="Stage"     value={deployment.stage} />
+        <MetaItem label="Source"    value={`${deployment.sourceKind}:${truncate(deployment.sourceRef, 26)}`} />
+        <MetaItem label="Image"     value={deployment.imageTag} />
+        <MetaItem label="Container" value={deployment.runtimeContainerName} />
+        <MetaItem label="Route"     value={deployment.routePath} link={liveUrl ?? undefined} />
+      </div>
 
       <div className="log-section">
-        <div className="log-toolbar">
-          <div className="log-toolbar-left">
-            <span className="log-toolbar-label">Logs</span>
-            <span className="log-line-count">{logs.length} lines</span>
+        <div className="log-bar">
+          <div className="log-bar-left">
+            <span className="log-bar-title">Process log</span>
+            <span className="log-count">{logs.length}</span>
           </div>
           <button
             type="button"
@@ -327,31 +315,20 @@ function LogLine({ entry }: { entry: DeploymentLogEntry }) {
   );
 }
 
-/* ── Meta cell ───────────────────────────────────────────────── */
+/* ── Meta item ───────────────────────────────────────────────── */
 
-function MetaCell({
-  label,
-  value,
-  link,
-}: {
-  label: string;
-  value: string | null;
-  link?: string;
-}) {
+function MetaItem({ label, value, link }: { label: string; value: string | null; link?: string }) {
   const display = value ?? "—";
-  const isEmpty = !value;
   return (
-    <div className="meta-cell">
-      <dt>{label}</dt>
-      <dd className={isEmpty ? "dim" : ""}>
-        {link && !isEmpty ? (
-          <a href={link} target="_blank" rel="noreferrer">
-            {display} ↗
-          </a>
+    <div className="meta-item">
+      <span className="meta-label">{label}</span>
+      <span className={`meta-val${!value ? " dim" : ""}`}>
+        {link && value ? (
+          <a href={link} target="_blank" rel="noreferrer">{display} ↗</a>
         ) : (
           display
         )}
-      </dd>
+      </span>
     </div>
   );
 }
@@ -364,11 +341,8 @@ function StatusDot({ status }: { status: Deployment["status"] }) {
 
 function StatusBadge({ status }: { status: Deployment["status"] }) {
   const label: Record<Deployment["status"], string> = {
-    pending:   "Pending",
-    building:  "Building",
-    deploying: "Deploying",
-    running:   "Running",
-    failed:    "Failed",
+    pending: "Pending", building: "Building", deploying: "Deploying",
+    running: "Running", failed: "Failed",
   };
   return <span className={`status-badge ${status}`}>{label[status]}</span>;
 }
@@ -377,26 +351,17 @@ function StatusBadge({ status }: { status: Deployment["status"] }) {
 
 function fmtTime(iso: string) {
   try {
-    return new Date(iso).toLocaleTimeString("en-US", {
-      hour12: false,
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-    });
-  } catch {
-    return "--:--:--";
-  }
+    return new Date(iso).toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  } catch { return "--:--:--"; }
 }
 
 function relativeTime(iso: string) {
   try {
-    const delta = Date.now() - new Date(iso).getTime();
-    if (delta < 60_000)   return `${Math.floor(delta / 1_000)}s ago`;
-    if (delta < 3_600_000) return `${Math.floor(delta / 60_000)}m ago`;
-    return `${Math.floor(delta / 3_600_000)}h ago`;
-  } catch {
-    return iso;
-  }
+    const d = Date.now() - new Date(iso).getTime();
+    if (d < 60_000) return `${Math.floor(d / 1_000)}s ago`;
+    if (d < 3_600_000) return `${Math.floor(d / 60_000)}m ago`;
+    return `${Math.floor(d / 3_600_000)}h ago`;
+  } catch { return iso; }
 }
 
 function truncate(s: string, n: number) {
