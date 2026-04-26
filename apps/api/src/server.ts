@@ -66,7 +66,7 @@ export function buildServer(options: BuildServerOptions = {}) {
   const sourceMaterializer =
     options.sourceMaterializer ??
     new DefaultSourceMaterializer({
-      sampleAppsRoot: resolve(process.cwd(), "sample-apps"),
+      sampleAppsRoot: process.env.SAMPLE_APPS_ROOT ?? resolve(process.cwd(), "sample-apps"),
       workspaceRoot: process.env.WORKSPACES_ROOT ?? ".data/workspaces",
     });
   const imageBuilder = options.imageBuilder ?? new RailpackImageBuilder();
