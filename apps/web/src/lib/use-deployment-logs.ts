@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
 import type { Deployment, DeploymentLogEntry } from "@orqforge/shared";
 
@@ -10,54 +10,38 @@ export function useDeploymentLogs(selectedDeployment: Deployment | null) {
   const deploymentId = selectedDeployment?.id ?? null;
 
   useEffect(() => {
-    if (!deploymentId) {
-      setLogs([]);
-      return;
-    }
+    // Clear immediately so no stale logs flash when switching deployments
+    setLogs([]);
+
+    if (!deploymentId) return;
 
     let disposed = false;
     const seen = new Set<number>();
 
     fetchDeploymentLogs(deploymentId)
       .then((payload) => {
-        if (disposed) {
-          return;
-        }
-
+        if (disposed) return;
         setLogs(payload.logs);
-        for (const entry of payload.logs) {
-          seen.add(entry.seq);
-        }
+        for (const entry of payload.logs) seen.add(entry.seq);
       })
       .catch(() => {
-        if (!disposed) {
-          setLogs([]);
-        }
+        if (!disposed) setLogs([]);
       });
 
-    const eventSource = new EventSource(`/api/deployments/${deploymentId}/logs/stream`);
+    const es = new EventSource(`/api/deployments/${deploymentId}/logs/stream`);
 
-    eventSource.addEventListener("log", (event) => {
-      const payload = JSON.parse((event as MessageEvent).data) as DeploymentLogEntry;
-
-      if (seen.has(payload.seq)) {
-        return;
-      }
-
-      seen.add(payload.seq);
-      setLogs((current) => [...current, payload]);
-    });
-
-    eventSource.addEventListener("status", () => {
-      // deployment status refresh is handled by TanStack Query polling
+    es.addEventListener("log", (raw) => {
+      const entry = JSON.parse((raw as MessageEvent).data) as DeploymentLogEntry;
+      if (seen.has(entry.seq)) return;
+      seen.add(entry.seq);
+      setLogs((prev) => [...prev, entry]);
     });
 
     return () => {
       disposed = true;
-      eventSource.close();
+      es.close();
     };
   }, [deploymentId]);
 
-  return useMemo(() => logs, [logs]);
+  return logs;
 }
-

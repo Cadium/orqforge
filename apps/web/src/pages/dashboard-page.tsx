@@ -1,14 +1,9 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import type { Deployment } from "@orqforge/shared";
+import type { Deployment, DeploymentLogEntry } from "@orqforge/shared";
 
-import {
-  createDeployment,
-  fetchDeployment,
-  fetchDeployments,
-  uploadArchive,
-} from "../lib/api";
+import { createDeployment, fetchDeployment, fetchDeployments, uploadArchive } from "../lib/api";
 import { useDeploymentLogs } from "../lib/use-deployment-logs";
 
 type SourceKind = "sample" | "git" | "archive";
@@ -17,9 +12,8 @@ export function DashboardPage() {
   const queryClient = useQueryClient();
   const [sourceKind, setSourceKind] = useState<SourceKind>("sample");
   const [gitUrl, setGitUrl] = useState("");
-  const [sampleName, setSampleName] = useState("hello-node");
   const [archiveFile, setArchiveFile] = useState<File | null>(null);
-  const [selectedDeploymentId, setSelectedDeploymentId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
   const deploymentsQuery = useQuery({
@@ -29,263 +23,366 @@ export function DashboardPage() {
   });
 
   const deployments = deploymentsQuery.data?.deployments ?? [];
-  const selectedDeployment = useMemo(
-    () =>
-      deployments.find((deployment) => deployment.id === selectedDeploymentId) ??
-      deployments[0] ??
-      null,
-    [deployments, selectedDeploymentId],
-  );
+  const isApiHealthy = deploymentsQuery.isSuccess;
+  const runningCount = deployments.filter((d) => d.status === "running").length;
 
   useEffect(() => {
-    if (!selectedDeploymentId && deployments[0]) {
-      setSelectedDeploymentId(deployments[0].id);
-    }
-  }, [deployments, selectedDeploymentId]);
+    if (!selectedId && deployments[0]) setSelectedId(deployments[0].id);
+  }, [deployments, selectedId]);
 
-  const deploymentDetailQuery = useQuery({
-    queryKey: ["deployment", selectedDeploymentId],
-    queryFn: () => fetchDeployment(selectedDeploymentId!),
-    enabled: Boolean(selectedDeploymentId),
+  const detailQuery = useQuery({
+    queryKey: ["deployment", selectedId],
+    queryFn: () => fetchDeployment(selectedId!),
+    enabled: Boolean(selectedId),
     refetchInterval: 2000,
   });
 
-  const logs = useDeploymentLogs(deploymentDetailQuery.data?.deployment ?? selectedDeployment);
+  const selected =
+    detailQuery.data?.deployment ??
+    deployments.find((d) => d.id === selectedId) ??
+    null;
 
-  const createDeploymentMutation = useMutation({
+  const logs = useDeploymentLogs(selected);
+
+  const createMutation = useMutation({
     mutationFn: async () => {
       if (sourceKind === "sample") {
-        return createDeployment({
-          sourceKind,
-          sourceRef: sampleName,
-        });
+        return createDeployment({ sourceKind, sourceRef: "hello-node" });
       }
-
       if (sourceKind === "git") {
-        return createDeployment({
-          sourceKind,
-          sourceRef: gitUrl.trim(),
-        });
+        if (!gitUrl.trim()) throw new Error("Enter a repository URL");
+        return createDeployment({ sourceKind, sourceRef: gitUrl.trim() });
       }
-
-      if (!archiveFile) {
-        throw new Error("Select an archive file before submitting");
-      }
-
+      if (!archiveFile) throw new Error("Select an archive file first");
       const upload = await uploadArchive(archiveFile);
-
-      return createDeployment({
-        sourceKind,
-        sourceRef: upload.upload.path,
-      });
+      return createDeployment({ sourceKind, sourceRef: upload.upload.path });
     },
     onSuccess: async (payload) => {
       setSubmitError(null);
-      setSelectedDeploymentId(payload.deployment.id);
+      setSelectedId(payload.deployment.id);
       await queryClient.invalidateQueries({ queryKey: ["deployments"] });
       await queryClient.invalidateQueries({
         queryKey: ["deployment", payload.deployment.id],
       });
     },
-    onError: (error) => {
-      setSubmitError(error instanceof Error ? error.message : "Failed to create deployment");
-    },
+    onError: (err) =>
+      setSubmitError(err instanceof Error ? err.message : "Deployment failed"),
   });
 
-  async function handleSubmit(event: FormEvent) {
-    event.preventDefault();
-    await createDeploymentMutation.mutateAsync();
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault();
+    await createMutation.mutateAsync();
   }
 
-  const selected = deploymentDetailQuery.data?.deployment ?? selectedDeployment;
-
   return (
-    <main className="dashboard-shell">
-      <section className="hero-panel">
-        <div>
-          <p className="eyebrow">Orqforge control plane</p>
-          <h1>Ship a repo, watch the pipeline, inspect the route.</h1>
-          <p className="hero-copy">
-            Orqforge is a lightweight local-first deployment orchestrator that
-            materializes source, builds an image, starts a container, and exposes it
-            behind Caddy through one operator dashboard.
-          </p>
+    <div className="app-shell">
+      <header className="topbar">
+        <span className="topbar-wordmark">Orqforge</span>
+        <span
+          className={`topbar-api-dot${isApiHealthy ? "" : " unhealthy"}`}
+          title={isApiHealthy ? "API online" : "API unreachable"}
+        />
+        <span className="topbar-sep" />
+        <div className="topbar-meta">
+          <strong>{deployments.length}</strong>
+          <span>{deployments.length === 1 ? "deployment" : "deployments"}</span>
+          <span>·</span>
+          <strong>{runningCount}</strong>
+          <span>{runningCount === 1 ? "running" : "running"}</span>
         </div>
-        <div className="hero-stats">
-          <div>
-            <strong>{deployments.length}</strong>
-            <span>deployments tracked</span>
-          </div>
-          <div>
-            <strong>{deployments.filter((item) => item.status === "running").length}</strong>
-            <span>live routes</span>
-          </div>
-        </div>
-      </section>
+      </header>
 
-      <section className="dashboard-grid">
-        <form className="panel form-panel" onSubmit={handleSubmit}>
-          <div className="panel-header">
-            <h2>Create deployment</h2>
-            <p>Choose a source, then let Orqforge handle the pipeline.</p>
-          </div>
-
-          <label className="field">
-            <span>Source type</span>
-            <select
-              value={sourceKind}
-              onChange={(event) => setSourceKind(event.target.value as SourceKind)}
-            >
-              <option value="sample">Sample app</option>
-              <option value="git">Git URL</option>
-              <option value="archive">Uploaded archive</option>
-            </select>
-          </label>
-
-          {sourceKind === "sample" ? (
-            <label className="field">
-              <span>Sample app</span>
-              <select value={sampleName} onChange={(event) => setSampleName(event.target.value)}>
-                <option value="hello-node">hello-node</option>
-              </select>
-            </label>
-          ) : null}
-
-          {sourceKind === "git" ? (
-            <label className="field">
-              <span>Git repository URL</span>
-              <input
-                type="url"
-                placeholder="https://github.com/example/repo.git"
-                value={gitUrl}
-                onChange={(event) => setGitUrl(event.target.value)}
-              />
-            </label>
-          ) : null}
-
-          {sourceKind === "archive" ? (
-            <label className="field">
-              <span>Archive file</span>
-              <input
-                type="file"
-                accept=".zip,.tar,.tgz,.tar.gz"
-                onChange={(event) => setArchiveFile(event.target.files?.[0] ?? null)}
-              />
-            </label>
-          ) : null}
-
-          {submitError ? <p className="error-text">{submitError}</p> : null}
-
-          <button className="primary-button" type="submit" disabled={createDeploymentMutation.isPending}>
-            {createDeploymentMutation.isPending ? "Submitting..." : "Create deployment"}
-          </button>
-        </form>
-
-        <section className="panel list-panel">
-          <div className="panel-header">
-            <h2>Deployments</h2>
-            <p>Statuses refresh automatically while the pipeline runs.</p>
-          </div>
-
-          <div className="deployment-list">
-            {deployments.map((deployment: Deployment) => {
-              const isSelected = deployment.id === selected?.id;
-
-              return (
-                <button
-                  key={deployment.id}
-                  className={`deployment-card ${isSelected ? "selected" : ""}`}
-                  type="button"
-                  onClick={() => setSelectedDeploymentId(deployment.id)}
-                >
-                  <div className="deployment-card-top">
-                    <strong>{deployment.slug}</strong>
-                    <span className={`status-pill status-${deployment.status}`}>
-                      {deployment.status}
-                    </span>
-                  </div>
-                  <p>{deployment.imageTag ?? "Image tag pending"}</p>
-                  <small>{deployment.routePath ? `http://localhost:8080${deployment.routePath}` : "Route pending"}</small>
-                </button>
-              );
-            })}
-
-            {deployments.length === 0 ? (
-              <div className="empty-state">
-                <strong>No deployments yet</strong>
-                <p>Create a sample deployment to exercise the Orqforge pipeline.</p>
+      <div className="workspace">
+        <aside className="sidebar">
+          <div className="new-deploy-panel">
+            <p className="panel-label">New Deployment</p>
+            <form onSubmit={handleSubmit}>
+              <div className="source-tabs" role="group" aria-label="Source type">
+                {(["sample", "git", "archive"] as SourceKind[]).map((kind) => (
+                  <button
+                    key={kind}
+                    type="button"
+                    className={`source-tab${sourceKind === kind ? " active" : ""}`}
+                    onClick={() => setSourceKind(kind)}
+                  >
+                    {kind === "sample" ? "Sample" : kind === "git" ? "Git" : "Archive"}
+                  </button>
+                ))}
               </div>
-            ) : null}
-          </div>
-        </section>
-      </section>
 
-      <section className="dashboard-grid lower-grid">
-        <section className="panel detail-panel">
-          <div className="panel-header">
-            <h2>Selected deployment</h2>
-            <p>Current runtime, route, and source metadata.</p>
+              {sourceKind === "sample" && (
+                <div className="form-field">
+                  <label htmlFor="sample-select">Sample app</label>
+                  <select id="sample-select" disabled defaultValue="hello-node">
+                    <option value="hello-node">hello-node</option>
+                  </select>
+                </div>
+              )}
+
+              {sourceKind === "git" && (
+                <div className="form-field">
+                  <label htmlFor="git-url">Repository URL</label>
+                  <input
+                    id="git-url"
+                    type="url"
+                    placeholder="https://github.com/org/repo.git"
+                    value={gitUrl}
+                    onChange={(e) => setGitUrl(e.target.value)}
+                    required
+                  />
+                </div>
+              )}
+
+              {sourceKind === "archive" && (
+                <div className="form-field">
+                  <label htmlFor="archive-input">Archive file</label>
+                  <input
+                    id="archive-input"
+                    type="file"
+                    accept=".zip,.tar,.tgz,.tar.gz"
+                    onChange={(e) => setArchiveFile(e.target.files?.[0] ?? null)}
+                    required
+                  />
+                </div>
+              )}
+
+              {submitError && <p className="form-error">{submitError}</p>}
+
+              <button
+                className="deploy-btn"
+                type="submit"
+                disabled={createMutation.isPending}
+              >
+                {createMutation.isPending ? "Deploying…" : "Deploy →"}
+              </button>
+            </form>
           </div>
 
+          <div className="deploy-list-panel">
+            <div className="deploy-list-header">
+              <p className="panel-label">Deployments</p>
+              <span className="count-badge">{deployments.length}</span>
+            </div>
+            <div className="deploy-list">
+              {deployments.map((dep) => (
+                <button
+                  key={dep.id}
+                  type="button"
+                  className={`deploy-card${dep.id === selected?.id ? " selected" : ""}`}
+                  onClick={() => setSelectedId(dep.id)}
+                >
+                  <div className="deploy-card-row">
+                    <div className="deploy-card-name">
+                      <StatusDot status={dep.status} />
+                      <span>{dep.slug}</span>
+                    </div>
+                    <StatusBadge status={dep.status} />
+                  </div>
+                  <div className="deploy-card-meta">
+                    {dep.sourceKind}:{truncate(dep.sourceRef, 30)}
+                  </div>
+                </button>
+              ))}
+
+              {deployments.length === 0 && (
+                <div className="list-empty">
+                  <strong>No deployments yet</strong>
+                  Create one using the form above.
+                </div>
+              )}
+            </div>
+          </div>
+        </aside>
+
+        <main className="main-panel">
           {selected ? (
-            <dl className="detail-grid">
-              <Detail label="Deployment ID" value={selected.id} />
-              <Detail label="Source kind" value={selected.sourceKind} />
-              <Detail label="Source ref" value={selected.sourceRef} />
-              <Detail label="Status" value={selected.status} />
-              <Detail label="Stage" value={selected.stage} />
-              <Detail label="Image tag" value={selected.imageTag ?? "Pending"} />
-              <Detail
-                label="Live URL"
-                value={
-                  selected.routePath ? `http://localhost:8080${selected.routePath}` : "Pending"
-                }
-              />
-              <Detail
-                label="Container"
-                value={selected.runtimeContainerName ?? "Pending"}
-              />
-            </dl>
+            <DeploymentView deployment={selected} logs={logs} />
           ) : (
-            <div className="empty-state">
+            <div className="main-empty">
               <strong>No deployment selected</strong>
-              <p>Choose one from the list to inspect the pipeline state.</p>
+              <span>Create one or select from the list.</span>
             </div>
           )}
-        </section>
-
-        <section className="panel log-panel">
-          <div className="panel-header">
-            <h2>Live logs</h2>
-            <p>Backlog is replayed first, then new events stream over SSE.</p>
-          </div>
-
-          <div className="log-console">
-            {logs.map((entry) => (
-              <div key={`${entry.seq}-${entry.createdAt}`} className="log-line">
-                <span className={`log-stream log-${entry.stream}`}>{entry.stream}</span>
-                <code>{entry.message}</code>
-              </div>
-            ))}
-
-            {logs.length === 0 ? (
-              <div className="empty-state inline-empty">
-                <strong>No logs yet</strong>
-                <p>Run a deployment to see Orqforge stream pipeline output here.</p>
-              </div>
-            ) : null}
-          </div>
-        </section>
-      </section>
-    </main>
+        </main>
+      </div>
+    </div>
   );
 }
 
-function Detail({ label, value }: { label: string; value: string }) {
+/* ── Deployment view ─────────────────────────────────────────── */
+
+function DeploymentView({
+  deployment,
+  logs,
+}: {
+  deployment: Deployment;
+  logs: DeploymentLogEntry[];
+}) {
+  const logRef = useRef<HTMLDivElement>(null);
+  const [autoScroll, setAutoScroll] = useState(true);
+
+  useEffect(() => {
+    if (autoScroll && logRef.current) {
+      logRef.current.scrollTop = logRef.current.scrollHeight;
+    }
+  }, [logs, autoScroll]);
+
+  function onLogScroll() {
+    const el = logRef.current;
+    if (!el) return;
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 32;
+    setAutoScroll(atBottom);
+  }
+
+  const liveUrl =
+    deployment.routePath ? `http://localhost:8080${deployment.routePath}` : null;
+
   return (
-    <div className="detail-item">
-      <dt>{label}</dt>
-      <dd>{value}</dd>
+    <>
+      <div className="deploy-header">
+        <div className="deploy-title-group">
+          <StatusDot status={deployment.status} />
+          <span className="deploy-slug">{deployment.slug}</span>
+          <StatusBadge status={deployment.status} />
+          <span className="deploy-id">{deployment.id.slice(0, 8)}</span>
+        </div>
+        <div className="deploy-actions">
+          {liveUrl && deployment.status === "running" && (
+            <a href={liveUrl} target="_blank" rel="noreferrer" className="visit-btn">
+              Open app ↗
+            </a>
+          )}
+        </div>
+      </div>
+
+      {deployment.failureReason && (
+        <div className="failure-banner">{deployment.failureReason}</div>
+      )}
+
+      <dl className="meta-grid">
+        <MetaCell label="Stage"     value={deployment.stage} />
+        <MetaCell label="Image"     value={deployment.imageTag} />
+        <MetaCell label="Container" value={deployment.runtimeContainerName} />
+        <MetaCell
+          label="Source"
+          value={`${deployment.sourceKind} · ${truncate(deployment.sourceRef, 38)}`}
+        />
+        <MetaCell label="Route"   value={deployment.routePath} link={liveUrl ?? undefined} />
+        <MetaCell label="Updated" value={relativeTime(deployment.updatedAt)} />
+      </dl>
+
+      <div className="log-section">
+        <div className="log-toolbar">
+          <div className="log-toolbar-left">
+            <span className="log-toolbar-label">Logs</span>
+            <span className="log-line-count">{logs.length} lines</span>
+          </div>
+          <button
+            type="button"
+            className={`autoscroll-toggle${autoScroll ? " active" : ""}`}
+            onClick={() => setAutoScroll((v) => !v)}
+          >
+            <span className="toggle-pill" />
+            Auto-scroll
+          </button>
+        </div>
+
+        <div className="log-output" ref={logRef} onScroll={onLogScroll}>
+          {logs.length === 0 ? (
+            <div className="log-waiting">Waiting for pipeline output…</div>
+          ) : (
+            logs.map((entry) => <LogLine key={entry.seq} entry={entry} />)
+          )}
+        </div>
+      </div>
+    </>
+  );
+}
+
+/* ── Log line ────────────────────────────────────────────────── */
+
+function LogLine({ entry }: { entry: DeploymentLogEntry }) {
+  return (
+    <div className={`log-line ${entry.stream}`}>
+      <span className="log-time">{fmtTime(entry.createdAt)}</span>
+      <span className="log-stream">{entry.stream}</span>
+      <span className="log-msg">{entry.message}</span>
     </div>
   );
+}
+
+/* ── Meta cell ───────────────────────────────────────────────── */
+
+function MetaCell({
+  label,
+  value,
+  link,
+}: {
+  label: string;
+  value: string | null;
+  link?: string;
+}) {
+  const display = value ?? "—";
+  const isEmpty = !value;
+  return (
+    <div className="meta-cell">
+      <dt>{label}</dt>
+      <dd className={isEmpty ? "dim" : ""}>
+        {link && !isEmpty ? (
+          <a href={link} target="_blank" rel="noreferrer">
+            {display} ↗
+          </a>
+        ) : (
+          display
+        )}
+      </dd>
+    </div>
+  );
+}
+
+/* ── Status atoms ────────────────────────────────────────────── */
+
+function StatusDot({ status }: { status: Deployment["status"] }) {
+  return <span className={`status-dot ${status}`} aria-hidden="true" />;
+}
+
+function StatusBadge({ status }: { status: Deployment["status"] }) {
+  const label: Record<Deployment["status"], string> = {
+    pending:   "Pending",
+    building:  "Building",
+    deploying: "Deploying",
+    running:   "Running",
+    failed:    "Failed",
+  };
+  return <span className={`status-badge ${status}`}>{label[status]}</span>;
+}
+
+/* ── Helpers ─────────────────────────────────────────────────── */
+
+function fmtTime(iso: string) {
+  try {
+    return new Date(iso).toLocaleTimeString("en-US", {
+      hour12: false,
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    });
+  } catch {
+    return "--:--:--";
+  }
+}
+
+function relativeTime(iso: string) {
+  try {
+    const delta = Date.now() - new Date(iso).getTime();
+    if (delta < 60_000)   return `${Math.floor(delta / 1_000)}s ago`;
+    if (delta < 3_600_000) return `${Math.floor(delta / 60_000)}m ago`;
+    return `${Math.floor(delta / 3_600_000)}h ago`;
+  } catch {
+    return iso;
+  }
+}
+
+function truncate(s: string, n: number) {
+  return s.length > n ? s.slice(0, n) + "…" : s;
 }
