@@ -10,6 +10,9 @@ import type { RouteVerifier } from "../domain/route-verifier.js";
 import type { SourceMaterializer } from "../domain/source-materializer.js";
 
 export class DeploymentExecutor {
+  private readonly queue: string[] = [];
+  private isProcessing = false;
+
   constructor(
     private readonly deploymentRepository: DeploymentRepository,
     private readonly logService: DeploymentLogService,
@@ -22,7 +25,33 @@ export class DeploymentExecutor {
   ) {}
 
   enqueue(deploymentId: string) {
-    void this.run(deploymentId);
+    if (!this.queue.includes(deploymentId)) {
+      this.queue.push(deploymentId);
+    }
+
+    void this.processQueue();
+  }
+
+  private async processQueue() {
+    if (this.isProcessing) {
+      return;
+    }
+
+    this.isProcessing = true;
+
+    try {
+      while (this.queue.length > 0) {
+        const nextDeploymentId = this.queue.shift();
+
+        if (!nextDeploymentId) {
+          continue;
+        }
+
+        await this.run(nextDeploymentId);
+      }
+    } finally {
+      this.isProcessing = false;
+    }
   }
 
   private async run(deploymentId: string) {
