@@ -75,6 +75,8 @@ export function buildServer(options: BuildServerOptions = {}) {
     options.ingressManager ??
     new CaddyIngressManager({
       routesDirectory: process.env.CADDY_ROUTES_DIR ?? "infra/caddy/routes",
+      adminUrl: process.env.CADDY_ADMIN_URL ?? "http://caddy:2019",
+      caddyfilePath: process.env.CADDY_CONFIG_PATH ?? undefined,
     });
   const routeVerifier =
     options.routeVerifier ??

@@ -5,7 +5,7 @@ services:
     command: >
       sh -c "
         apk add --no-cache docker-cli git unzip tar curl &&
-        curl -fsSL https://railpack.com/install.sh | sh -s -- --bin-dir /usr/local/bin &&
+        curl -sSL https://railpack.com/install.sh | sh &&
         corepack enable &&
         pnpm install --frozen-lockfile &&
         pnpm --filter @orqforge/api dev
@@ -23,6 +23,8 @@ services:
       WORKSPACES_ROOT: /workspace/.data/workspaces
       DATABASE_PATH: /workspace/.data/orqforge.sqlite
       BUILDKIT_HOST: tcp://buildkitd:1234
+      CADDY_ADMIN_URL: http://caddy:2019
+      CADDY_CONFIG_PATH: /workspace/infra/caddy/Caddyfile
     ports:
       - "4000:4000"
     volumes:
