@@ -1,57 +1,122 @@
 # Orqforge
 
-Orqforge is a lightweight deployment orchestration prototype inspired by modern PaaS systems. It packages source acquisition, image builds, container runtime, ingress, and deployment visibility into a single local-first control plane.
+A lightweight deployment orchestration prototype. Push source, watch a pipeline turn it into a running container behind Caddy, stream the build logs live.
 
-## Current Status
+---
 
-Orqforge currently includes:
+## Quick start
 
-- a TypeScript control plane API
-- SQLite-backed deployment and log persistence
-- SSE log streaming with backlog replay
-- source materialization for sample apps, Git URLs, and uploaded archives
-- a Railpack-shaped build adapter
-- a Docker runtime adapter
-- a Caddy ingress adapter with dynamic route snippets
-- a Vite + TanStack one-page dashboard
+```bash
+docker compose -f infra/compose/docker-compose.yml up
+```
 
-The main remaining work is final end-to-end hardening, submission polish, and Brimble feedback packaging.
+Open [http://localhost:8080](http://localhost:8080).
 
-## Prerequisites
+The first boot takes a couple of minutes — the API container installs `docker-cli` and `railpack` on startup. Subsequent boots are faster because pnpm packages are cached in a named volume.
 
-- Docker and Docker Compose
-- internet access during the first `docker compose up`
+**Prerequisites**
 
-The first startup needs internet access because:
+- Docker Desktop (or Docker Engine + Compose v2)
+- Internet access on first boot (pulls base images, installs Railpack)
+- No external accounts or paid services required
 
-- the API container installs `docker-cli` and `railpack`
-- the workspace installs `pnpm` dependencies
-- Compose pulls its base images
+---
 
-No external accounts or paid services are required.
+## What it does
 
-## Repository Structure
+Orqforge accepts a source input, materializes it into a workspace, builds a container image with Railpack (no handwritten Dockerfiles), starts the container via Docker, writes a Caddy route snippet, and verifies the route is reachable. The whole pipeline is visible in the dashboard as it runs, with logs streaming live over SSE.
 
-```text
+```
+source input  →  workspace  →  Railpack build  →  docker run  →  Caddy route
+                                                                        ↓
+                                                      http://localhost:8080/apps/<slug>
+```
+
+---
+
+## Using the dashboard
+
+**Create a deployment** — choose a source type:
+
+| Type | What it accepts |
+|---|---|
+| Sample | The bundled `hello-node` app (good for a first test) |
+| Git | Any public Git URL; the repo is cloned into a workspace |
+| Archive | A `.zip`, `.tar`, `.tgz`, or `.tar.gz` upload |
+
+**Deployment list** — all deployments with live status badges. Click to inspect.
+
+**Selected deployment panel** — stage, image tag, container name, route, source, updated-at.
+
+**Log console** — backlog is replayed on selection, then new events stream over SSE in real time. Auto-scroll tracks the tail; scroll up to pause.
+
+---
+
+## Routing
+
+Deployed apps are proxied at a path prefix, no DNS edits needed:
+
+```
+http://localhost:8080/          →  Orqforge dashboard
+http://localhost:8080/api/*     →  Orqforge API
+http://localhost:8080/apps/<slug>  →  deployed app
+```
+
+The Caddy config hot-reloads snippet files from `infra/caddy/routes/` — one `.caddy` file per deployment, written by the ingress adapter.
+
+---
+
+## Repository layout
+
+```
 apps/
-  api/        Orqforge control plane API and deployment orchestrator
-  web/        Vite + TanStack one-page frontend
+  api/        Fastify control plane — executor, adapters, SSE, SQLite
+  web/        Vite + TanStack Router/Query dashboard
 docs/
   architecture.md
   api.md
   decisions/
 infra/
-  caddy/
-  compose/
+  caddy/      Caddyfile + hot-loaded route snippets
+  compose/    docker-compose.yml
 packages/
-  shared/     Shared types and contracts
+  shared/     Shared TypeScript types (Deployment, DeploymentLogEntry, …)
 sample-apps/
-  hello-node/ Sample application deployed through Orqforge
+  hello-node/ Bundled Node app — the default smoke-test target
 ```
 
-## Local Verification
+---
 
-### 1. Install and verify the workspace
+## API
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/api/health` | Health check |
+| `POST` | `/api/deployments` | Create deployment |
+| `GET` | `/api/deployments` | List all deployments |
+| `GET` | `/api/deployments/:id` | Get deployment detail |
+| `GET` | `/api/deployments/:id/logs` | Fetch persisted logs |
+| `GET` | `/api/deployments/:id/logs/stream` | SSE log stream |
+| `POST` | `/api/uploads` | Upload an archive |
+
+Quick smoke path:
+
+```bash
+# health
+curl http://localhost:8080/api/health
+
+# create a sample deployment
+curl -X POST http://localhost:8080/api/deployments \
+  -H "content-type: application/json" \
+  -d '{"sourceKind":"sample","sourceRef":"hello-node"}'
+
+# stream logs
+curl -N http://localhost:8080/api/deployments/<id>/logs/stream
+```
+
+---
+
+## Workspace verification
 
 ```bash
 pnpm install --no-frozen-lockfile
@@ -59,95 +124,75 @@ pnpm typecheck
 pnpm test
 ```
 
-### 2. Start the full Orqforge stack
+All three must be green before running the Compose stack.
 
-```bash
-docker compose -f infra/compose/docker-compose.yml up
-```
+---
 
-This is intended to start:
+## Architecture notes
 
-- `api` for the control plane
-- `web` for the Vite dashboard
-- `caddy` as the single ingress point on [http://localhost:8080](http://localhost:8080)
-- `buildkitd` for Railpack-backed image builds
+**Adapter-driven pipeline.** Every stage of the pipeline is a typed port with a single concrete adapter:
 
-### 3. Open the dashboard
+| Port | Adapter | Swappable with |
+|---|---|---|
+| `SourceMaterializer` | `DefaultSourceMaterializer` | any VCS or storage backend |
+| `ImageBuilder` | `RailpackImageBuilder` | Buildpacks, Kaniko, etc. |
+| `ContainerRuntime` | `DockerContainerRuntime` | Nomad, containerd, etc. |
+| `IngressManager` | `CaddyIngressManager` | nginx, Traefik, etc. |
+| `RouteVerifier` | `HttpRouteVerifier` | DNS check, TCP probe, etc. |
 
-Open [http://localhost:8080](http://localhost:8080) and create a deployment from:
+**Persist logs first, stream second.** Every log line is written to SQLite before it's published to the in-memory fan-out. SSE clients receive the full backlog on connect, then tail live events. Refreshing the page never loses history.
 
-- the bundled `hello-node` sample app
-- a Git URL
-- an uploaded `.zip`, `.tar`, `.tgz`, or `.tar.gz` archive
+**Path-based routing.** Deployed apps are served under `/apps/<slug>` so no `/etc/hosts` edits or wildcard DNS are needed on a reviewer's machine.
 
-### 4. Manual API smoke path
+**Serialised deployments.** The executor runs one deployment at a time. Correct and debuggable beats fake concurrency for a local orchestrator.
 
-Health check:
+**SQLite by default.** One file, zero dependencies, sufficient for the workload. The database path is configurable via `DATABASE_PATH`.
 
-```bash
-curl http://localhost:8080/api/health
-```
+---
 
-Create the sample deployment directly:
+## Deployment statuses
 
-```bash
-curl -X POST http://localhost:8080/api/deployments \
-  -H "content-type: application/json" \
-  -d '{"sourceKind":"sample","sourceRef":"hello-node"}'
-```
+| User-visible status | Internal stages |
+|---|---|
+| `pending` | `accepted` → `materializing_source` |
+| `building` | `building_image` |
+| `deploying` | `starting_container` → `configuring_ingress` → `verifying_route` |
+| `running` | `completed` |
+| `failed` | `failed` |
 
-List deployments:
+---
 
-```bash
-curl http://localhost:8080/api/deployments
-```
+## Debugging the pipeline
 
-Fetch persisted logs:
+If a deployment fails, check in this order:
 
-```bash
-curl http://localhost:8080/api/deployments/<deployment-id>/logs
-```
+1. **Railpack binary** — `docker exec <api-container> which railpack`
+2. **BuildKit connectivity** — `docker exec <api-container> buildctl --addr tcp://buildkitd:1234 debug workers`
+3. **Docker socket** — `docker exec <api-container> docker ps`
+4. **Container network** — deployed containers must be on the `orqforge` network to be reachable from Caddy
+5. **Caddy route reload** — `docker exec <caddy-container> caddy reload --config /etc/caddy/Caddyfile`
+6. **Route verification** — verifier retries up to 12 times with exponential backoff; check the failure reason on the deployment
 
-Stream live logs:
+---
 
-```bash
-curl -N http://localhost:8080/api/deployments/<deployment-id>/logs/stream
-```
+## What I would do with more time
 
-### Expected end-to-end flow
+- **Build cache.** Railpack supports layer caching; passing a `--cache-from` flag and a shared cache volume would make rebuilds fast.
+- **Zero-downtime redeploys.** Start the new container, verify it, update the Caddy snippet, then stop the old one. The adapter boundaries make this straightforward to add.
+- **Rollback.** Image tags are persisted per deployment. Redeploy from a previous tag without rebuilding.
+- **Container log tailing.** Stream `docker logs -f` output after the container starts so runtime logs appear alongside build logs.
+- **Concurrent deployments.** Replace the fire-and-forget executor with a proper queue; each deployment runs in its own goroutine with a semaphore.
+- **Nomad adapter.** The `ContainerRuntime` port makes swapping Docker for Nomad a matter of writing one adapter — the rest of the pipeline doesn't change.
 
-On a machine with Docker available, Orqforge should:
+---
 
-1. accept a source input
-2. materialize a workspace
-3. build an image with Railpack
-4. start a Docker container
-5. write a Caddy route snippet
-6. verify the route
-7. expose the app under `http://localhost:8080/apps/<deployment-slug>`
+## What I would rip out
 
-## Principles
+- The `at-startup install` pattern in the Compose file. It works but it is slow and brittle. The right fix is a purpose-built API image that bakes in `railpack` and `docker-cli` at image build time.
+- `pnpm install` inside the container on every boot. A pre-built image with the workspace already compiled eliminates startup lag and makes the reviewer experience much better.
 
-- No handwritten Dockerfiles for app builds
-- SQLite by default
-- Caddy as the single ingress point
-- Docker as the local runtime
-- SSE for live log streaming unless implementation evidence forces a change
-- Clean architecture boundaries between domain, application, and infrastructure
+---
 
-## Notes and Tradeoffs
+## Time spent
 
-- Orqforge uses path-based routing for deployed apps to avoid local DNS or `/etc/hosts` edits.
-- Logs are persisted first and streamed second so refreshes do not lose deployment history.
-- The backend is intentionally adapter-driven so Docker, Railpack, Caddy, and source handling remain replaceable.
-- The current Compose stack favors clarity over startup speed because the API container installs a few system dependencies on first boot.
-
-## Submission Notes
-
-The final submission package will also include:
-
-- architecture overview
-- API walkthrough
-- test strategy
-- tradeoffs and future improvements
-- Brimble deployment feedback
+Approximately 12–14 hours across design, architecture, implementation, and polish.
